@@ -26,7 +26,7 @@ abstract class AbstractGateway extends BaseAbstractGateway
     /** @var \Entity\Service\EntityConfigService $entityConfigService */
     protected $entityConfigService = NULL;
 
-    /** @var \Magento\Api\Soap */
+    /** @var \Mms\Api\RestV1 */
     protected $rest = NULL;
 
 
