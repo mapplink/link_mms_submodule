@@ -22,6 +22,8 @@ abstract class AbstractGateway extends BaseAbstractGateway
     const GATEWAY_ENTITY = 'generic';
     const GATEWAY_ENTITY_CODE = 'gty';
 
+    const MMS_STORE_PREFIX = 'mms/';
+
 
     /** @var \Entity\Service\EntityConfigService $entityConfigService */
     protected $entityConfigService = NULL;
