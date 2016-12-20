@@ -10,6 +10,7 @@
 namespace Mms;
 
 use Log\Service\LogService;
+use Mms\Gateway\OrderGateway;
 use Node\AbstractNode;
 use Node\AbstractGateway;
 use Node\Entity;
@@ -24,15 +25,6 @@ class Node extends AbstractNode
     protected function getNodeLogPrefix()
     {
         return 'mms_';
-    }
-
-    /**
-     * Returns the node entity
-     * @return Entity\Node
-     */
-    public function getNodeEntity()
-    {
-        return $this->_entity;
     }
 
     /**
@@ -79,6 +71,15 @@ class Node extends AbstractNode
     protected function _deinit() {}
 
     /**
+     * @return OrderGateway $orderGateway
+     */
+    public function loadOrderGateway()
+    {
+        $this->isOverdueRun = FALSE;
+        return $this->_lazyLoad('order');
+    }
+
+    /**
      * Implemented in each NodeModule
      * Returns an instance of a subclass of AbstractGateway that can handle the provided entity type.
      *
@@ -90,10 +91,10 @@ class Node extends AbstractNode
     {
         switch ($entityType) {
             case 'order':
-                $gateway = new Gateway\OrderGateway;
+                $gateway = new Gateway\OrderGateway();
                 break;
             case 'stockitem':
-                $gateway = new Gateway\StockGateway;
+                $gateway = new Gateway\StockGateway();
                 break;
             default:
                 throw new SyncException('Unknown/invalid entity type '.$entityType);
