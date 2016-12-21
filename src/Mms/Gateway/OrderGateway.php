@@ -750,8 +750,8 @@ class OrderGateway extends AbstractGateway
         }
 
         $this->_nodeService
-            ->setSinceId($this->_nodeEntity->getNodeId(), 'order', 'retrieve', $newSinceId)
-            ->setTimestamp($this->_nodeEntity->getNodeId(), 'order', 'retrieve', $this->getNewRetrieveTimestamp());
+            ->setTimestamp($this->_nodeEntity->getNodeId(), 'order', 'retrieve', $this->getNewRetrieveTimestamp())
+            ->setSinceId($this->_nodeEntity->getNodeId(), 'order', 'retrieve', $newSinceId);
 
         return count($results);
     }
