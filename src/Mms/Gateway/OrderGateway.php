@@ -73,6 +73,17 @@ class OrderGateway extends AbstractGateway
         'shipping_method'=>'int_ems_china_3-8_tracked'
     );
 
+    const GRAND_TOTAL_BASE = 'payment'; // 'price' does not take the promotion offset into account while 'payment' does
+    /** @var array $this->itemTotalCodes  defines totals to be calculated and if they per item */
+    protected $itemTotalCodes = array(
+        'discount'=>FALSE,
+        'payment'=>FALSE,
+        'price'=>TRUE,
+        'shipping'=>FALSE,
+        'tax'=>FALSE,
+        'weight'=>FALSE
+    );
+
 
     /**
      * Initialize the gateway and perform any setup actions required.
@@ -443,39 +454,41 @@ class OrderGateway extends AbstractGateway
             }
         }
 
-        $grandTotal = $baseToCurrencyRateGrandTotal = $baseToCurrencyRate = 0;
-        $itemTotalCodes = array('discount'=>FALSE, 'payment'=>FALSE, 'shipping'=>FALSE, 'tax'=>FALSE, 'weight'=>FALSE);
-        foreach ($itemTotalCodes as $code=>$perItem) {
+        $itemSubTotals = $baseToCurrencyRateGrandTotal = $baseToCurrencyRate = 0;
+        foreach ($this->itemTotalCodes as $code=>$perItem) {
             $itemTotals[$code] = 0;
         }
 
         if (isset($orderData['order_items'])) {
             foreach ($orderData['order_items'] as $orderitem) {
                 if (isset($orderitem['quantity'])) {
-                    if (isset($orderitem['item']['local_order_item_financials']['price'])) {
-                        $subTotal = $orderitem['quantity'] * $orderitem['item']['local_order_item_financials']['price'];
-                        $itemBaseToCurrencyRate = (isset($orderData['marketplace_to_local_exchange_rate_applied'])
-                            ? $orderData['marketplace_to_local_exchange_rate_applied']
-                            : (isset($orderData['marketplace_to_local_exchange_rate_estimated'])
-                                ? $orderData['marketplace_to_local_exchange_rate_estimated']
-                                : 0
+                    $rowTotals = array();
+
+                    foreach ($this->itemTotalCodes as $code=>$perItem) {
+                        if (isset($orderitem['item']['local_order_item_financials'][$code])) {
+                            $fieldValue = $orderitem['item']['local_order_item_financials'][$code];
+                            if ($perItem) {
+                                $rowTotals[$code] = $orderitem['quantity'] * $fieldValue;
+                            }else{
+                                $rowTotals[$code] = $fieldValue;
+                            }
+
+                            $itemTotals[$code] += $rowTotals[$code];
+                        }
+                    }
+
+                    $itemBaseToCurrencyRate = (isset($orderData['marketplace_to_local_exchange_rate_applied'])
+                        ? $orderData['marketplace_to_local_exchange_rate_applied']
+                        : (isset($orderData['marketplace_to_local_exchange_rate_estimated'])
+                            ? $orderData['marketplace_to_local_exchange_rate_estimated']
+                            : 0
                         ));
 
-                        $grandTotal += $subTotal;
-                        if ($itemBaseToCurrencyRate > 0) {
-                            $baseToCurrencyRate += $itemBaseToCurrencyRate * $subTotal;
-                            $baseToCurrencyRateGrandTotal += $subTotal;
-                        }
+                    if ($itemBaseToCurrencyRate > 0) {
+                        $baseToCurrencyRate += $itemBaseToCurrencyRate * $rowTotals['price'];
+                        $baseToCurrencyRateGrandTotal += $rowTotals['price'];
                     }
 
-                    foreach ($itemTotalCodes as $code=>$perItem) {
-                        $fieldValue = $orderitem['item']['local_order_item_financials'][$code];
-                        if ($perItem) {
-                            $itemTotals[$code] += $orderitem['quantity'] * $fieldValue;
-                        }else{
-                            $itemTotals[$code] += $fieldValue;
-                        }
-                    }
                 }
 
                 if (!isset($data['shipping_method'])) {
@@ -485,11 +498,13 @@ class OrderGateway extends AbstractGateway
             }
         }
         $baseToCurrencyRate /= $baseToCurrencyRateGrandTotal;
+        $grandTotal = $itemTotals[self::GRAND_TOTAL_BASE];
 
         foreach ($itemTotals as $code=>$total) {
             $totalCode = self::getTotalCode($code);
             $data[$totalCode] = $orderData[$totalCode] = $itemTotals[$code];
         }
+        unset($data['price_total']);
 
         // Convert payment total to the correct format and key, if exists.
         $paymentTotalCode = self::getTotalCode('payment');
@@ -498,7 +513,7 @@ class OrderGateway extends AbstractGateway
                 ->convertPaymentData(self::MMS_PAYMENT_CODE, $data[$paymentTotalCode]);
             unset($data[$paymentTotalCode]);
         }
-        unset($itemTotalCodes, $itemTotals, $paymentTotalCode);
+        unset($itemTotals, $paymentTotalCode);
 
         foreach (self::$orderDefaults as $orderKey=>$defaultValue) {
             if (!isset($data[$orderKey])) {
