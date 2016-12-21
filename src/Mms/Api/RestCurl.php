@@ -424,7 +424,7 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
         if (isset($response['StatusCode']) && $response['StatusCode'] == 200) {
             $response['success'] = TRUE;
         }else{
-            $response = array('success'=>FALSE);
+            $response['success'] = FALSE;
         }
 
         return $response;

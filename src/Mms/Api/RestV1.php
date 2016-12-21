@@ -54,7 +54,11 @@ class RestV1 extends RestCurl
         $fallbackResponse = array('newSinceId'=>$sinceId, 'localOrderIds'=>array());
 
         foreach ($map as $from=>$to) {
-            $localOrderIdsSinceResult[$to] = $response['Result'][$from];
+            if (isset($response['Result'][$from])) {
+                $localOrderIdsSinceResult[$to] = $response['Result'][$from];
+            }else{
+                $response['success'] = FALSE;
+            }
         }
 
         if (!$response['success'] || count($localOrderIdsSinceResult) != count($map)) {
