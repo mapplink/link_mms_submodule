@@ -176,8 +176,8 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
      */
     protected function getUrl($callType, array $parameters = array())
     {
-        if (self::TEST_MODE) {
-            $url = static::REST_TEST_BASE_URI;
+        if (static::TEST_MODE) {
+            $url = static::TEST_BASE_URI;
         }else{
             $url = $this->node->getConfig('web_url');
         }
