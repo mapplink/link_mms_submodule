@@ -62,12 +62,6 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
     /** @var array $this->additionalCurlOptions */
     protected $additionalCurlOptions = array();
     /** @var array $this->clientOptions */
-    protected $clientOptions = array(
-        'adapter'=>'Zend\Http\Client\Adapter\Curl',
-        'curloptions'=>array(CURLOPT_FOLLOWLOCATION=>TRUE),
-        'maxredirects'=>0,
-        'timeout'=>30
-    );
 
 
     /**
@@ -111,9 +105,11 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
     abstract protected function getLogCodePrefix();
 
     /**
+     * @param array $headers
+     * @param array $parameters
      * @return FALSE|NULL|resource $this->curlHandle
      */
-    protected function initCurl($httpMethod, array $headers, $parameters)
+    protected function initCurl(array $headers, array $parameters)
     {
         if (is_null($this->curlHandle)) {
             $this->curlHandle = curl_init();
@@ -121,24 +117,20 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
 
         $this->curlOptions = array_replace_recursive(
             $this->baseCurlOptions,
-            $this->additionalCurlOptions
+            $this->additionalCurlOptions,
+            $this->curlOptions
         );
 
         $header = array($this->authorisation);
-        switch ($httpMethod)
+        switch ($this->requestType)
         {
-            case Request::METHOD_POST:
-                unset($this->curlOptions[CURLOPT_CUSTOMREQUEST]);
-                $this->curlOptions[CURLOPT_POST] = 1;
-
             case Request::METHOD_PATCH:
+            case Request::METHOD_POST:
             case Request::METHOD_PUT:
                 $post = json_encode($parameters);
-                $this->curlOptions[CURLOPT_POSTFIELDS] = $post;
-                $header[] = 'Content-Type: application/json';
-                $header[] = 'Content-Length: '.strlen($post);
+                $headers[] = 'Content-Type: application/json';
+                $headers[] = 'Content-Length: '.strlen($post);
                 break;
-
             default:
                 //
         }
@@ -163,7 +155,7 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
             }
         }
         if ($cacheControl) {
-            $headers[] = $cacheControl;
+//            $headers[] = $cacheControl;
         }
 
         return $headers;
@@ -183,7 +175,7 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
         }
 
         if (strlen($url) > 0) {
-            $url = trim($url, '/').'/'.$callType;
+            $url = trim(trim($url, '/').'/'.$callType);
             if (count($parameters) > 0) {
                 // TECHNICAL DEBT // ToDo (maybe): include parameters
             }
@@ -200,16 +192,17 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
      */
     protected function executeCurl($callType)
     {
+        curl_setopt_array($this->curlHandle, $this->curlOptions);
+
         $logData = array(
             'request type'=>$this->requestType,
-            'curl info'=>curl_getinfo($this->curlHandle)
+            'curl info'=>curl_getinfo($this->curlHandle),
+            'curl options'=>$this->curlOptions
         );
 
-        curl_setopt_array($this->curlHandle, $this->curlOptions);
-        unset($this->curlOptions);
-
         $response = curl_exec($this->curlHandle);
-        $error = $this->getError();
+        $error = curl_error($this->curlHandle);
+        $this->curlOptions = array();
 
         $logCode = $this->getLogCodePrefix().'_'.substr(strtolower($this->requestType), 0, 2);
         if ($error) {
@@ -224,33 +217,31 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
                 $logData['response'] = $response;
                 $decodedResponse = Json::decode($response, Json::TYPE_ARRAY);
 
-                $errors = array();
-                $errorKeys = array('message', 'parameters', 'trace');
-
                 try{
                     $responseArray = (array) $decodedResponse;
-                    foreach ($errorKeys as $key) {
+                    if (isset($responseArray['ErrorResponse'])) {
+                        $error = $responseArray['ErrorResponse'];
+                        if (is_array($error)) {
+                            $error = ' '.implode(' ', $error);
+                        }elseif (!is_scalar($error)) {
+                            $error = 'Undefined ErrorResponse of type '.gettype($error).'.';
+                        }
 
-                        if (isset($responseArray[$key])) {
-                            if (is_string($responseArray[$key])) {
-                                $errors[] = $responseArray[$key];
-                            }else{
-                                $errors[] = var_export($responseArray[$key], TRUE);
-                            }
+                        if (isset($responseArray['StatusCode'])) {
+                            $error = 'StatusCode '.$responseArray['StatusCode'].'. '.$error;
                         }
                     }
                 }catch(\Exception $exception) {
                     $logData['exception'] = $exception->getMessage();
-                    foreach ($errorKeys as $key) {
-                        if (isset($decodedResponse->$key)) {
-                            $errors[] = $decodedResponse->$key;
-                        }
-                    }
+                    $error .= ' '.$exception->getMessage();
                 }
 
-                $error = implode(' ', $errors);
-                if (strlen($error) == 0 && current($responseArray) != trim($response, '"')) {
-                    $error = 'This does not seem to be a valid '.$callType.' key: '.$response;
+                $error = trim(preg_replace('#\s+#', ' ', $error));
+
+                if (strlen($error) == 0 && !isset($responseArray['StatusCode'])) {
+                    $error = 'MMS send an invalid reponse on call '.$callType.'.';
+                }elseif (strlen($error) == 0 && $responseArray['StatusCode'] != 200) {
+                    $error = 'MMS send a '.$responseArray['StatusCode'].' reponse on call '.$callType.'.';
                 }
 
                 if (strlen($error) == 0) {
@@ -312,44 +303,33 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
     }
 
     /**
-     * @return bool $this->authorisation
+     * @param string $httpMethod
+     * @param string $callType
+     * @param array $parameters
+     * @return bool (bool) $this->authorisation
      */
-    protected function authorise($httpMethod, $callType, $parameters)
+    protected function authorise($httpMethod, $callType, array $parameters)
     {
-        if (is_null($this->authorisation)) {
-            $appId = $this->node->getConfig('app_id');
-            $appKey = $this->node->getConfig('app_key');
+        $appId = $this->node->getConfig('app_id');
+        $appKey = $this->node->getConfig('app_key');
 
-            $url = strtolower(urlencode($this->getUrl($callType, $parameters)));
-            $timestamp = $this->getTimestamp();
-            $nonce = $this->getGuid();
-            $contentBase64String = ''; // empty when there's no content
+        $setCurlOptions = 'set'.ucfirst(strtolower($httpMethod)).'CurlOptions';
+        $this->$setCurlOptions($this->getUrl($callType), $parameters);
 
-            $signatureRawData = $appId.$httpMethod.$url.$timestamp.$nonce.$contentBase64String;
-            $signature = utf8_encode($signatureRawData);
+        $url = strtolower(urlencode($this->curlOptions[CURLOPT_URL]));
+        $timestamp = $this->getTimestamp();
+        $nonce = $this->getGuid();
+        $contentBase64String = ''; // empty when there's no content
 
-            $secretKeyByteArray = base64_decode($appKey);
+        $signatureRawData = $appId.$httpMethod.$url.$timestamp.$nonce.$contentBase64String;
+        $signature = utf8_encode($signatureRawData);
 
-            $hashByteArray = hash_hmac('sha256', $signature, $secretKeyByteArray, TRUE);
-            $signatureBase64String = base64_encode($hashByteArray);
+        $secretKeyByteArray = base64_decode($appKey);
 
-            $this->authorisation = 'Authorization: mms '.$appId.':'.$signatureBase64String.':'.$nonce.':'.$timestamp;
+        $hashByteArray = hash_hmac('sha256', $signature, $secretKeyByteArray, TRUE);
+        $signatureBase64String = base64_encode($hashByteArray);
 
-            $header = array($this->authorisation);
-            switch ($httpMethod)
-            {
-                case Request::METHOD_POST:
-                case Request::METHOD_PATCH:
-                case Request::METHOD_PUT:
-                    $header[] = 'Content-Type: application/json';
-                    $post = json_encode($parameters);
-                    $header[] = 'Content-Length: '.strlen($post);
-                    break;
-                default:
-                    //
-            }
-            $this->initCurl($httpMethod, $header, $parameters);
-        }
+        $this->authorisation = 'mms '.$appId.':'.$signatureBase64String.':'.$nonce.':'.$timestamp;
 
         return (bool) $this->authorisation;
     }
@@ -363,54 +343,38 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
     protected function call($httpMethod, $callType, array $parameters = array())
     {
         $logCode = $this->getLogCodePrefix().'_call';
+        $this->requestType = strtoupper($httpMethod);
 
         if ($this->authorise($httpMethod, $callType, $parameters)) {
-            $this->requestType = strtoupper($httpMethod);
-            $setRequestDataMethod = 'set'.ucfirst(strtolower($httpMethod)).'fields';
+            $headers = array(
+                'Authorization: '.$this->authorisation,
+                'Accept: application/json',
+                'Content-Type: application/json'
+            );
+            $this->initCurl($headers, $parameters);
 
-            $uri = $this->getUrl($callType);
-            $headersArray = array(
-                'Authorization'=>$this->authorisation,
-                'Accept'=>'application/json',
-                'Content-Type'=>'application/json'
+            $logData = array(
+                'url'=>$this->curlOptions[CURLOPT_URL],
+                'headers'=>$headers,
+                'method'=>$this->requestType,
+                'curl options'=>$this->curlOptions,
+                'parameters'=>$parameters
             );
 
-            $headers = new Headers();
-            $headers->addHeaders($headersArray);
+            $response = $logData['response'] = $this->executeCurl($callType);
 
-            $this->request = new Request();
-            $this->request->setHeaders($headers);
-            $this->request->setUri($uri);
-            $this->request->setMethod($this->requestType);
+            if (is_array($response) && array_key_exists('Result', $response)) {
+                $response = $response['Result'];
 
-            $this->client = new Client();
-            $this->client->setOptions($this->clientOptions);
-
-            $this->$setRequestDataMethod($parameters);
-            $response = $this->client->send($this->request);
-
-            if (!is_array($response)) {
-                $responseBody = $response->getBody();
-                $response = Json::decode($responseBody, Json::TYPE_ARRAY);
-            }
-
-            $logData = array('uri'=>$uri, 'headers'=>$headersArray, 'method'=>$this->requestType,
-                'options'=>$this->clientOptions, 'parameters'=>$parameters, 'response'=>$response);
-
-            if (is_array($response) && array_key_exists('items', $response)) {
-                $response = $response['items'];
-
-            }elseif (isset($response['message'])) {
-                if (isset($response['parameters']) && is_array($response['parameters'])) {
-                    foreach ($response['parameters'] as $key=>$replace) {
-                        $search = '"%'.(++$key).'"';
-                        $replace = '`'.$replace.'`';
-                        $response['message'] = str_replace($search, $replace, $response['message']);
-                    }
-                }
+            }elseif (isset($response['StatusCode'])) {
                 $this->getServiceLocator()->get('logService')
-                    ->log(LogService::LEVEL_ERROR, $logCode.'_err', self::ERROR_PREFIX.$response['message'], $logData);
-                throw new GatewayException(self::ERROR_PREFIX.$response['message']);
+                    ->log(LogService::LEVEL_ERROR,
+                        $logCode.'_err',
+                        self::ERROR_PREFIX.'Response does not contain Result key.',
+                        $logData
+                    );
+                throw new GatewayException(self::ERROR_PREFIX.$response['StatusCode']);
+                $response = NULL;
             }
         }else{
             $logData = array();
@@ -421,10 +385,10 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
         $this->getServiceLocator()->get('logService')
             ->log(LogService::LEVEL_DEBUGEXTRA, $logCode, 'REST call '.$callType, $logData);
 
-        if (isset($response['StatusCode']) && $response['StatusCode'] == 200) {
-            $response['success'] = TRUE;
+        if (is_null($response)) {
+            $response = array('success'=>FALSE);
         }else{
-            $response['success'] = FALSE;
+            $response['success'] = TRUE;
         }
 
         return $response;
@@ -487,118 +451,145 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
 
 
     /**
-     * @param string $urlParameters
-     * @return bool $success
+     * @param string $baseUrl
+     * @param array $urlParameters
+     * @return bool $urlWithParameters
      */
-    protected function setUrlParameters($urlParameters)
+    protected function getUrlWithParameter($baseUrl, array $urlParameters)
     {
-        $success = FALSE;
+        $parameters = array();
 
         if (!is_null($this->requestType)) {
-            if (isset($urlParameters['filter']) && is_array($urlParameters['filter'])) {
-                $parameters = array();
+            foreach ($urlParameters as $key=>$value) {
+                $escapedKey = urlencode($key);
+                $escapedValue = urlencode($value);
 
-                foreach ($urlParameters['filter'] as $filterKey=>$filter) {
-                    foreach ($filter as $key=>$value) {
-                        $escapedKey = urlencode($key);
-                        $escapedValue = urlencode($value);
+                $logCode = $this->getLogCodePrefix().'_url';
+                $logData = array(
+                    'key'=>$key,
+                    'escaped key'=>$escapedKey,
+                    'value'=>$value,
+                    'escaped value'=>$escapedValue,
+                    'fields'=>$urlParameters
+                );
 
-                        $logCode = $this->getLogCodePrefix().'_url';
-                        $logData = array(
-                            'key'=>$key,
-                            'escaped key'=>$escapedKey,
-                            'value'=>$value,
-                            'escaped value'=>$escapedValue,
-                            'fields'=>$urlParameters
-                        );
+                if ($key != $escapedKey) {
+                    $logLevel = LogService::LEVEL_ERROR;
+                    $logCode .= '_err';
+                    $logMessage = $this->requestType.' field key-value pair is not valid.';
+                    throw new MagelinkException($logMessage);
 
-                        if ($key != $escapedKey) {
-                            $logLevel = LogService::LEVEL_ERROR;
-                            $logCode .= '_err';
-                            $logMessage = $this->requestType.' field key-value pair is not valid.';
-                            throw new MagelinkException($logMessage);
+                    $parameters = array();
+                    break;
+                }elseif ($value != $escapedValue) {
+                    $logLevel = LogService::LEVEL_WARN;
+                    $logCode .= '_esc';
+                    $logMessage = $this->requestType.' value had to be escaped.';
+                    unset($logData['escaped key']);
 
-                            $parameters = array();
-                            break;
-                        }elseif ($value != $escapedValue) {
-                            $logLevel = LogService::LEVEL_WARN;
-                            $logCode .= '_esc';
-                            $logMessage = $this->requestType.' value had to be escaped.';
-                            unset($logData['escaped key']);
-
-                            $value = $escapedValue;
-                        }else{
-                            unset($logLevel);
-                        }
-
-                        $parameters['searchCriteria']['filterGroups'][0]['filters'][$filterKey][$key] = $value;
-
-                        if (isset($logLevel)) {
-                            $this->getServiceLocator()->get('logService')
-                                ->log($logLevel, $logCode, $logMessage, $logData);
-                        }
-                    }
-
-                    if (count($urlParameters) != 0) {
-                        $success = TRUE;
-                        $parameterObject = new Parameters($parameters);
-                        $success = $this->request->setQuery($parameterObject);
-                    }else{
-
-                    }
+                    $value = $escapedValue;
+                }else{
+                    unset($logLevel);
                 }
-            }else{
-                $success = TRUE;
+
+                $parameters[] = $key.'='.$value;
+
+                if (isset($logLevel)) {
+                    $this->getServiceLocator()->get('logService')
+                        ->log($logLevel, $logCode, $logMessage, $logData);
+                }
             }
         }
 
-        return (bool) $success;
+        if (count($urlParameters) == 0) {
+            $urlWithParameters = $baseUrl;
+        }elseif (count($urlParameters) == count($parameters)) {
+            $urlWithParameters = $baseUrl.'?'.implode('&', $parameters);
+        }else{
+            $urlWithParameters = '';
+        }
+
+        return $urlWithParameters;
     }
 
     /**
-     * @param string $postfields
+     * @param string $baseUrl
+     * @param array $deletefields
      * @return bool $success
      */
-    public function setDeletefields($deletefields)
+    public function setDeleteCurlOptions($baseUrl, array $deletefields)
     {
-        return $this->setUrlParameters($deletefields);
+        $this->curlOptions = array_replace_recursive($this->curlOptions, array(
+            CURLOPT_URL=>$this->getUrlWithParameter($baseUrl, $deletefields)
+        ));
+
+        return $this->curlOptions;
     }
 
     /**
+     * @param string $baseUrl
      * @param array $getfields
      * @return bool $success
      */
-    public function setGetfields(array $getfields)
+    public function setGetCurlOptions($baseUrl, array $getfields)
     {
-        return $this->setUrlParameters($getfields);
+        $this->curlOptions = array_replace_recursive($this->curlOptions, array(
+            CURLOPT_URL=>$this->getUrlWithParameter($baseUrl, $getfields),
+            CURLOPT_CUSTOMREQUEST=>Request::METHOD_GET
+        ));
+
+        return $this->curlOptions;
     }
 
     /**
+     * @param string $baseUrl
+     * @param array $patchfields
+     * @return bool $success
+     */
+    protected function setPatchCurlOptions($baseUrl, array $patchfields)
+    {
+        $patchfields = Json::encode($patchfields);
+        $this->curlOptions = array_replace_recursive($this->curlOptions, array(
+            CURLOPT_URL=>$baseUrl,
+            CURLOPT_CUSTOMREQUEST=>Request::METHOD_PATCH,
+            CURLOPT_POSTFIELDS=>$patchfields
+        ));
+
+        return $this->curlOptions;
+    }
+
+    /**
+     * @param string $baseUrl
      * @param array $postfields
      * @return bool $success
      */
-    protected function setPostfields(array $postfields)
+    protected function setPostCurlOptions($baseUrl, array $postfields)
     {
-        $postContent = Json::encode($postfields);
-        return $this->request->setContent($postContent);
+        $postfields = Json::encode($postfields);
+        $this->curlOptions = array_replace_recursive($this->curlOptions, array(
+            CURLOPT_URL=>$baseUrl,
+            CURLOPT_POST=>1,
+            CURLOPT_POSTFIELDS=>$postfields
+        ));
+
+        return $this->curlOptions;
     }
 
     /**
+     * @param string $baseUrl
      * @param array $putfields
      * @return bool $success
      */
-    protected function setPutfields(array $putfields)
+    protected function setPutCurlOptions($baseUrl, array $putfields)
     {
-        $putContent = Json::encode($putfields);
-        return $this->request->setContent($putContent);
-    }
+        $putfields = Json::encode($putfields);
+        $this->curlOptions = array_replace_recursive($this->curlOptions, array(
+            CURLOPT_URL=>$baseUrl,
+            CURLOPT_PUT=>1,
+            CURLOPT_POSTFIELDS=>$putfields
+        ));
 
-    /**
-     * @return string $curlError
-     */
-    public function getError()
-    {
-        return curl_error($this->curlHandle);
+        return $this->curlOptions;
     }
 
     /**

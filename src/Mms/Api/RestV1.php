@@ -12,12 +12,13 @@ namespace Mms\Api;
 
 use Entity\Wrapper\Order;
 use Entity\Wrapper\Stockitem;
+use Log\Service\LogService;
 
 
 class RestV1 extends RestCurl
 {
 
-    const TEST_MODE = TRUE;
+    const TEST_MODE = FALSE;
     const TEST_BASE_URI = 'https://staging-api-mm-base-mms.marketengine.com/';
 
     /** @var array $this->additionalCurlOptions */
@@ -43,25 +44,33 @@ class RestV1 extends RestCurl
     public function getOrderIdsSinceResult($sinceId)
     {
         if ((string) intval($sinceId) == (string) $sinceId) {
-            $callType = 'orders/ids?since_id='.$sinceId;
-            $response = $this->get($callType);
+            $callType = 'orders/ids';
+            $parameters = array('since_id'=>$sinceId);
+
+            $response = $this->get($callType, $parameters);
         }else{
             // ToDo: Log or throw
         }
 
         $localOrderIdsSinceResult = array();
         $map = array('new_since_id'=>'newSinceId', 'order_ids'=>'localOrderIds');
-        $fallbackResponse = array('newSinceId'=>$sinceId, 'localOrderIds'=>array());
+        $fallbackResponse = array('success'=>FALSE, 'newSinceId'=>$sinceId, 'localOrderIds'=>array());
 
         foreach ($map as $from=>$to) {
-            if (isset($response['Result'][$from])) {
-                $localOrderIdsSinceResult[$to] = $response['Result'][$from];
+            if (isset($response[$from])) {
+                $localOrderIdsSinceResult[$to] = $response[$from];
             }else{
                 $response['success'] = FALSE;
             }
         }
 
         if (!$response['success'] || count($localOrderIdsSinceResult) != count($map)) {
+            $this->getServiceLocator()->get('logService')
+                ->log(LogService::LEVEL_ERROR,
+                    $this->getLogCodePrefix().'_oid_err',
+                    'OrderIdsSinceResult call was not successful. Used fallback response.',
+                    array('since id'=>$sinceId, 'response'=>$response, 'fallback'=>$fallbackResponse)
+                );
             $localOrderIdsSinceResult = $fallbackResponse;
         }
 
@@ -70,20 +79,24 @@ class RestV1 extends RestCurl
 
     /**
      * @param int $localOrderId
-     * @param array $parameters  e.g. status, order_items
+     * @param array $fieldsToBeRetrieved  e.g. status, order_items
      * @return array $orderDetails
      */
-    public function getOrderDetailsById($localOrderId, array $parameters = array())
+    public function getOrderDetailsById($localOrderId, array $fieldsToBeRetrieved = array())
     {
         $callType = 'orders/'.$localOrderId;
 
-        if (count($parameters) > 0) {
-            $parameters = array('fields'=>implode(',', $parameters));
+        if (count($fieldsToBeRetrieved) > 0) {
+            $parameters = array('fields'=>implode(',', $fieldsToBeRetrieved));
+        }else{
+            $parameters = array();
         }
+        unset($fieldsToBeRetrieved);
+
         $response = $this->get($callType, $parameters);
 
-        if ($response['success'] && isset($response['Result'])) {
-            $orderDetails = $response['Result'];
+        if ($response['success']) {
+            $orderDetails = $response;
         }else{
             $orderDetails = array();
         }
