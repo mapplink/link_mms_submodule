@@ -10,10 +10,10 @@
 namespace Mms;
 
 use Log\Service\LogService;
-use Mms\Gateway\OrderGateway;
+use Magelink\Exception\SyncException;
 use Node\AbstractNode;
 use Node\AbstractGateway;
-use Node\Entity;
+use Mms\Gateway\OrderGateway;
 
 
 class Node extends AbstractNode
