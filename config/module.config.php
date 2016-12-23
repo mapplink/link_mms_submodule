@@ -14,7 +14,7 @@ $moduleConfig = array (
             'entity_type_support'=>array(
 //                'product',
                 'order',
-                'stockitem'
+//                'stockitem'
             ),
             'config'=>array( // Config options to be displayed to the administrator
                 'web_url'=>array(
