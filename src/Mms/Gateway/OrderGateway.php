@@ -112,9 +112,11 @@ class OrderGateway extends AbstractGateway
      */
     protected function isOrderToBeRetrieved(array $orderData, $sinceId = NULL)
     {
+        return TRUE;
+
         if (in_array($this->getOrderStatusFromOrderData($orderData), self::$mmsExcludeStatusses)) {
             $retrieve = FALSE;
-        }elseif ($sinceId == 0
+        }elseif ($sinceId == 1
           && in_array($this->getOrderStatusFromOrderData($orderData), self::$initialMmsExcludeStatusses)) {
             $retrieve = FALSE;
         }else{
@@ -426,6 +428,12 @@ class OrderGateway extends AbstractGateway
         return $success;
     }
 
+    protected function getUniqueIdFromOrderData($orderData)
+    {
+        /** ToDo: isset */
+        return self::MMS_ORDER_UNIQUE_PREFIX.$orderData['marketplace_order_reference'];
+    }
+
     /**
      * Store order with provided order data
      * @param array $orderData
@@ -440,7 +448,7 @@ class OrderGateway extends AbstractGateway
 
         $data = array();
         $storeId = self::getStoreIdFromMarketPlaceId($orderData['marketplace_id']);
-        $uniqueId = self::MMS_ORDER_UNIQUE_PREFIX.$orderData['marketplace_order_reference'];
+        $uniqueId = $this->getUniqueIdFromOrderData($orderData);
         $localId = $orderData['order_id'];
         $createdAtTimestamp = strtotime($orderData['created_at']);
 
@@ -461,43 +469,47 @@ class OrderGateway extends AbstractGateway
 
         if (isset($orderData['order_items'])) {
             foreach ($orderData['order_items'] as $orderitem) {
-                if (isset($orderitem['quantity'])) {
-                    $rowTotals = array();
+                if (isset($orderitem['quantity']) && isset($orderitem['item'])) {
+                    foreach ($orderitem['item'] as $item) {
+                        $rowTotals = array();
 
-                    foreach ($this->itemTotalCodes as $code=>$perItem) {
-                        if (isset($orderitem['item']['local_order_item_financials'][$code])) {
-                            $fieldValue = $orderitem['item']['local_order_item_financials'][$code];
-                            if ($perItem) {
-                                $rowTotals[$code] = $orderitem['quantity'] * $fieldValue;
-                            }else{
-                                $rowTotals[$code] = $fieldValue;
+                        foreach ($this->itemTotalCodes as $code=>$perItem) {
+                            if (isset($item['local_order_item_financials'][$code])) {
+                                $fieldValue = $item['local_order_item_financials'][$code];
+
+                                if ($perItem) {
+                                    $rowTotals[$code] = $orderitem['quantity'] * $fieldValue;
+                                }else {
+                                    $rowTotals[$code] = $fieldValue;
+                                }
+
+                                $itemTotals[$code] += $rowTotals[$code];
                             }
+                        }
 
-                            $itemTotals[$code] += $rowTotals[$code];
+                        $itemBaseToCurrencyRate = (isset($orderData['marketplace_to_local_exchange_rate_applied'])
+                            ? $orderData['marketplace_to_local_exchange_rate_applied']
+                            : (isset($orderData['marketplace_to_local_exchange_rate_estimated'])
+                                ? $orderData['marketplace_to_local_exchange_rate_estimated']
+                                : 0
+                            ));
+
+                        if ($itemBaseToCurrencyRate > 0) {
+                            $baseToCurrencyRate += $itemBaseToCurrencyRate * $rowTotals['price'];
+                            $baseToCurrencyRateGrandTotal += $rowTotals['price'];
                         }
                     }
-
-                    $itemBaseToCurrencyRate = (isset($orderData['marketplace_to_local_exchange_rate_applied'])
-                        ? $orderData['marketplace_to_local_exchange_rate_applied']
-                        : (isset($orderData['marketplace_to_local_exchange_rate_estimated'])
-                            ? $orderData['marketplace_to_local_exchange_rate_estimated']
-                            : 0
-                        ));
-
-                    if ($itemBaseToCurrencyRate > 0) {
-                        $baseToCurrencyRate += $itemBaseToCurrencyRate * $rowTotals['price'];
-                        $baseToCurrencyRateGrandTotal += $rowTotals['price'];
-                    }
-
                 }
 
                 if (!isset($data['shipping_method'])) {
                     $data['shipping_method'] = $this->getShippingMethod($orderitem);
                 }
-
             }
         }
-        $baseToCurrencyRate /= $baseToCurrencyRateGrandTotal;
+
+        if ($baseToCurrencyRateGrandTotal > 0) {
+            $baseToCurrencyRate /= $baseToCurrencyRateGrandTotal;
+        }
         $grandTotal = $itemTotals[self::GRAND_TOTAL_BASE];
 
         foreach ($itemTotals as $code=>$total) {
@@ -527,7 +539,7 @@ class OrderGateway extends AbstractGateway
         $data['base_to_currency_rate'] = $baseToCurrencyRate;
 //        $data['giftcard_total'] = $data['reward_total'] = $data['storecredit_total'] = 0;
 
-        if (isset($orderData['customer_id']) && $orderData['customer_id']) {
+        if (isset($orderData['customer_email']) && $orderData['customer_email']) {
             $nodeId = $this->_node->getNodeId();
             $customer = $this->_entityService
                 ->loadEntity($nodeId, 'customer', $this->getCustomerStoreId($storeId), $data['customer_email']);
@@ -564,6 +576,7 @@ class OrderGateway extends AbstractGateway
                         $this->createAddresses($orderData),
                         $data
                     );
+
                     $existingEntity = $this->_entityService->createEntity(
                         $this->_node->getNodeId(),
                         'order',
@@ -574,7 +587,7 @@ class OrderGateway extends AbstractGateway
                     );
                     $this->_entityService->linkEntity($this->_node->getNodeId(), $existingEntity, $localId);
 
-                   $this->getServiceLocator()->get('logService')
+                    $this->getServiceLocator()->get('logService')
                         ->log($logLevel,
                             'mms_o_new'.$logCodeSuffix,
                             'New order '.$uniqueId.$logMessageSuffix,
@@ -671,18 +684,6 @@ class OrderGateway extends AbstractGateway
                     array('entity'=>$existingEntity, 'exception'=>$exception)
                 );
         }
-
-        try{
-            $this->updateStatusHistory($orderData, $existingEntity);
-        }catch (\Exception $exception) {
-            $this->getServiceLocator()->get('logService')
-                ->log(LogService::LEVEL_ERROR,
-                    'mms_o_w_herr'.$logCodeSuffix,
-                    'Updating of the status history failed on order '.$uniqueId.'.',
-                    array('order'=>$uniqueId, 'order data'=>$orderData, 'error'=>$exception->getMessage()),
-                    array('entity'=>$existingEntity, 'exception'=>$exception)
-                );
-        }
     }
 
     /**
@@ -757,53 +758,6 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * Insert any new status history entries as entity comments
-     * @param array $orderData The full order data
-     * @param Order $orderEntity The order entity to attach to
-     * @throws MagelinkException
-     * @throws NodeException
-     */
-    protected function updateStatusHistory(array $orderData, Order $orderEntity)
-    {
-        $referenceIds = array();
-        $commentIds = array();
-        $comments = $this->_entityService->loadEntityComments($orderEntity);
-
-        foreach($comments as $com){
-            $referenceIds[] = $com->getReferenceId();
-            $commentIds[] = $com->getCommentId();
-        }
-
-        foreach ($orderData['status_history'] as $historyItem) {
-            if (isset($historyItem['comment']) && preg_match('/{([0-9]+)} - /', $historyItem['comment'], $matches)) {
-                if(in_array($matches[1], $commentIds)){
-                    continue; // Comment already loaded through another means
-                }
-            }
-            if (in_array($historyItem['created_at'], $referenceIds)) {
-                continue; // Comment already loaded
-            }
-
-            if (!isset($historyItem['comment'])) {
-                $historyItem['comment'] = '(no comment)';
-            }
-            if (!isset($historyItem['status'])) {
-                $historyItem['status'] = '(no status)';
-            }
-            $notifyCustomer = isset($historyItem['is_customer_notified']) && $historyItem['is_customer_notified'] == '1';
-
-            $this->_entityService->createEntityComment(
-                $orderEntity,
-                'Magento',
-                'Status History Event: '.$historyItem['created_at'].' - '.$historyItem['status'],
-                $historyItem['comment'],
-                $historyItem['created_at'],
-                $notifyCustomer
-            );
-        }
-    }
-
-    /**
      * Create all the OrderItem entities for a given order
      * @param array $orderData
      * @param Order $order
@@ -815,44 +769,49 @@ class OrderGateway extends AbstractGateway
         $nodeId = $this->_node->getNodeId();
         $parentId = $order->getId();
 
-        foreach ($orderData['items'] as $item) {
-            $uniqueId = $orderData['increment_id'].'-'.$item['sku'].'-'.$item['item_id'];
+        foreach ($orderData['order_items'] as $item) {
+            $sku = $item['item']['sku'];
+            $localId = $item['item']['item_id'];
+            $uniqueId = $this->getUniqueIdFromOrderData($orderData).'-'.$sku.'-'.$localId;
 
             $entity = $this->_entityService
                 ->loadEntity(
                     $this->_node->getNodeId(),
                     'orderitem',
-                    self::getEntityStoreId($order),
+                    self::getEntityStoreId($order, FALSE),
                     $uniqueId
                 );
             if (!$entity) {
-                $localId = $item['item_id'];
-                $product = $this->_entityService->loadEntity($this->_node->getNodeId(), 'product', 0, $item['sku']);
+                $product = $this->_entityService->loadEntity($this->_node->getNodeId(), 'product', 0, $sku);
                 $data = array(
                     'product'=>($product ? $product->getId() : null),
-                    'sku'=>$item['sku'],
+                    'sku'=>$sku,
                     'product_name'=>isset($item['name']) ? $item['name'] : '',
-                    'is_physical'=>((isset($item['is_virtual']) && $item['is_virtual']) ? 0 : 1),
-                    'product_type'=>(isset($item['product_type']) ? $item['product_type'] : null),
-                    'quantity'=>$item['qty_ordered'],
-                    'item_price'=>(isset($item['base_price']) ? $item['base_price'] : 0),
-                    'total_price'=>(isset($item['base_row_total']) ? $item['base_row_total'] : 0),
-                    'total_tax'=>(isset($item['base_tax_amount']) ? $item['base_tax_amount'] : 0),
-                    'total_discount'=>(isset($item['base_discount_amount']) ? $item['base_discount_amount'] : 0),
-                    'weight'=>(isset($item['row_weight']) ? $item['row_weight'] : 0),
+                    'is_physical'=>1,
+                    'product_type'=>NULL,
+                    'quantity'=>$item['quantity'],
+                    'item_price'=>(isset($item['local_order_item_financials']['price'])
+                        ? $item['local_order_item_financials']['price'] : 0),
+                    'total_price'=>(isset($item['local_order_item_financials']['payment'])
+                        ? $item['local_order_item_financials']['payment'] : 0),
+                    'total_tax'=>(isset($item['local_order_item_financials']['tax'])
+                        ? $item['local_order_item_financials']['tax'] : 0),
+                    'total_discount'=>(isset($item['local_order_item_financials']['discount'])
+                        ? $item['local_order_item_financials']['discount'] : 0),
+                    'weight'=>(isset($item['item']['weight']) ? $item['item']['weight'] : 0),
                 );
 
-                if (isset($item['base_price_incl_tax'])) {
-                    $data['item_tax'] = $item['base_price_incl_tax'] - $data['item_price'];
-                }elseif ($data['total_price'] && $data['total_price'] > 0) {
-                    $data['item_tax'] = ($data['total_tax'] / $data['total_price']) * $data['item_price'];
-                }elseif ($data['quantity'] && $data['quantity'] > 0){
+                if (isset($data['total_tax']) && isset($data['quantity']) && $data['quantity'] > 0) {
                     $data['item_tax'] = $data['total_tax'] / $data['quantity'];
                 }else{
                     $data['item_tax'] = 0;
                 }
 
-                $data['item_discount'] = ($data['quantity'] ? $data['total_discount'] / $data['quantity'] : 0);
+                if (isset($data['total_discount']) && isset($data['quantity']) && $data['quantity'] > 0) {
+                    $data['item_discount'] = $data['total_discount'] / $data['quantity'];
+                }else{
+                    $data['item_discount'] = 0;
+                }
 
                 $this->getServiceLocator()->get('logService')
                     ->log(LogService::LEVEL_INFO,
@@ -861,7 +820,7 @@ class OrderGateway extends AbstractGateway
                         array('orderitem uniqued id'=>$uniqueId, 'quantity'=>$data['quantity'],'data'=>$data)
                     );
 
-                $storeId = ($this->_node->isMultiStore() ? $orderData['store_id'] : 0);
+                $storeId = $order->getStoreId();
                 $orderitem = $this->_entityService
                     ->createEntity($nodeId, 'orderitem', $storeId, $uniqueId, $data, $parentId);
                 $this->_entityService
@@ -888,6 +847,7 @@ class OrderGateway extends AbstractGateway
                     if (strtolower(substr($address['language_code'], 0, strlen($languageCode))) == $languageCode
                       || is_null($languageCode)) {
                         $addressArray = $address;
+                        $addressArray['address_id'] = uniqid();
                         break;
                     }
                 }
@@ -930,7 +890,7 @@ class OrderGateway extends AbstractGateway
      */
     protected function getNameArray($name)
     {
-        $nameParts = explode(' ', $name);
+        $nameParts = array_map('trim', explode(' ', trim($name)));
         $nameArray = array(
             'last_name'=>array_pop($nameParts),
             'first_name'=>array_shift($nameParts),
