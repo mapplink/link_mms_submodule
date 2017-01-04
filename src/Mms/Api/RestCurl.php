@@ -612,7 +612,7 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
     {
         /** @var \Entity\Service\EntityService $entityService */
         $entityService = $this->getEntityService();
-        $localEntityId = $entityService->getLocalId($this->node, $entity);
+        $localEntityId = $entityService->getLocalId($this->node->getNodeId(), $entity);
 
         return $localEntityId;
     }
