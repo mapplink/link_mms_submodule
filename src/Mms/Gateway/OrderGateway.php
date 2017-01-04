@@ -770,7 +770,10 @@ class OrderGateway extends AbstractGateway
         $parentId = $order->getId();
 
         foreach ($orderData['order_items'] as $item) {
-            $localId = $item['item']['item_id'];
+            $localId = (isset($item['order_item_id']) ? $item['order_item_id'] : NULL);
+            $localProductId = (isset($item['item']['item_id']) ? $item['item']['item_id'] : NULL);
+            $localStockitemId = (isset($item['item']['variation_id']) ? $item['item']['variation_id'] : NULL);
+
             if (isset($item['item']['master_sku']) && $item['item']['master_sku']) {
                 $sku = $item['item']['master_sku'];
             }elseif (isset($item['item']['sku']) && $item['item']['sku']) {
@@ -778,7 +781,9 @@ class OrderGateway extends AbstractGateway
             }else{
                 $sku = '<-undefined->';
             }
-            $uniqueId = $this->getUniqueIdFromOrderData($orderData).'-'.$sku.'-'.$localId;
+
+            $uniqueOrderId = $this->getUniqueIdFromOrderData($orderData);
+            $uniqueId = $uniqueOrderId.'-'.$sku.'-'.$localId;
 
             $entity = $this->_entityService
                 ->loadEntity(
@@ -788,9 +793,72 @@ class OrderGateway extends AbstractGateway
                     $uniqueId
                 );
             if (!$entity) {
-                $product = $this->_entityService->loadEntity($this->_node->getNodeId(), 'product', 0, $sku);
+                $product = $this->_entityService->loadEntity($nodeId, 'product', 0, $sku);
+                if ($product) {
+                    $productId = $product->getId();
+                    $storedLocalId = $this->_entityService->getLocalId($nodeId, $product);
+                    if (!is_null($storedLocalId) && !is_null($localProductId) && $storedLocalId != $localProductId) {
+                        $this->_entityService->unlinkEntity($nodeId, $product);
+                        $this->getServiceLocator()->get('logService')
+                            ->log(LogService::LEVEL_WARN,
+                                'mms_o_re_oi_ulp',
+                                'Unlinked local product id.',
+                                array('sku'=>$sku, 'stored local'=>$storedLocalId, 'local'=>$localProductId)
+                            );
+                    }
+                    if (is_null($localProductId) && is_null($storedLocalId)) {
+                        $this->getServiceLocator()->get('logService')
+                            ->log(LogService::LEVEL_ERROR,
+                                'mms_o_re_oi_nlp',
+                                'Unable to link product.',
+                                array('sku'=>$sku)
+                            );
+                    }elseif (!is_null($localProductId)) {
+                        $this->_entityService->linkEntity($nodeId, $product, $localProductId);
+                    }
+                }else{
+                    $this->getServiceLocator()->get('logService')
+                        ->log(LogService::LEVEL_ERROR,
+                            'mms_o_re_oi_nop',
+                            'No product existing for order item.',
+                            array('order unique'=>$uniqueOrderId, 'orderitem uniqued id'=>$uniqueId, 'sku'=>$sku)
+                        );
+                    $productId = NULL;
+                }
+
+                $stockitem = $this->_entityService->loadEntity($nodeId, 'stockitem', 0, $sku);
+                if ($stockitem) {
+                    $storedLocalId = $this->_entityService->getLocalId($nodeId, $stockitem);
+                    if (!is_null($storedLocalId) && !is_null($localStockitemId) && $storedLocalId != $localStockitemId) {
+                        $this->_entityService->unlinkEntity($nodeId, $stockitem);
+                        $this->getServiceLocator()->get('logService')
+                            ->log(LogService::LEVEL_WARN,
+                                'mms_o_re_oi_ulsi',
+                                'Unlinked local stockitem id.',
+                                array('sku'=>$sku, 'stored local'=>$storedLocalId, 'local'=>$localStockitemId)
+                            );
+                    }
+                    if (is_null($localStockitemId) && is_null($storedLocalId)) {
+                        $this->getServiceLocator()->get('logService')
+                            ->log(LogService::LEVEL_ERROR,
+                                'mms_o_re_oi_nlsi',
+                                'Unable to link stock item.',
+                                array('sku'=>$sku)
+                            );
+                    }elseif (!is_null($localStockitemId)) {
+                        $this->_entityService->linkEntity($nodeId, $stockitem, $localStockitemId);
+                    }
+                }else{
+                    $this->getServiceLocator()->get('logService')
+                        ->log(LogService::LEVEL_ERROR,
+                            'mms_o_re_oi_nosi',
+                            'No stockitem existing for order item.',
+                            array('order unique'=>$uniqueOrderId, 'orderitem uniqued id'=>$uniqueId, 'sku'=>$sku)
+                        );
+                }
+
                 $data = array(
-                    'product'=>($product ? $product->getId() : null),
+                    'product'=>$productId,
                     'sku'=>$sku,
                     'product_name'=>isset($item['name']) ? $item['name'] : '',
                     'is_physical'=>1,
@@ -830,7 +898,7 @@ class OrderGateway extends AbstractGateway
                 $orderitem = $this->_entityService
                     ->createEntity($nodeId, 'orderitem', $storeId, $uniqueId, $data, $parentId);
                 $this->_entityService
-                    ->linkEntity($this->_node->getNodeId(), $orderitem, $localId);
+                    ->linkEntity($nodeId, $orderitem, $localId);
 
                 $this->updateStockQuantities($order, $orderitem);
             }
