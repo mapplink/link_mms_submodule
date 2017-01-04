@@ -770,8 +770,14 @@ class OrderGateway extends AbstractGateway
         $parentId = $order->getId();
 
         foreach ($orderData['order_items'] as $item) {
-            $sku = $item['item']['sku'];
             $localId = $item['item']['item_id'];
+            if (isset($item['item']['master_sku']) && $item['item']['master_sku']) {
+                $sku = $item['item']['master_sku'];
+            }elseif (isset($item['item']['sku']) && $item['item']['sku']) {
+                $sku = $item['item']['sku'];
+            }else{
+                $sku = '<-undefined->';
+            }
             $uniqueId = $this->getUniqueIdFromOrderData($orderData).'-'.$sku.'-'.$localId;
 
             $entity = $this->_entityService
