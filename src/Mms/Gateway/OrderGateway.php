@@ -792,6 +792,7 @@ class OrderGateway extends AbstractGateway
                     self::getEntityStoreId($order, FALSE),
                     $uniqueId
                 );
+
             if (!$entity) {
                 $product = $this->_entityService->loadEntity($nodeId, 'product', 0, $sku);
                 if ($product) {
@@ -1220,7 +1221,7 @@ class OrderGateway extends AbstractGateway
      * @param string $comment Optional comment to append to order
      * @param string $notify String boolean, whether to notify customer
      * @param string $sendComment String boolean, whether to include order comment in notify
-     * @param array $itemsRefunded Array of item entity id->qty to refund, or null if automatic (all)
+     * @param array $itemsRefunded Array of item entity id->qty to refund, or NULL if automatic (all)
      * @param int $shippingRefund
      * @param int $creditRefund
      * @param int $adjustmentPositive
@@ -1298,7 +1299,7 @@ class OrderGateway extends AbstractGateway
      * @param string $comment Optional comment to append to order
      * @param string $notify String boolean, whether to notify customer
      * @param string $sendComment String boolean, whether to include order comment in notify
-     * @param array|null $itemsShipped Array of item entity id->qty to ship, or null if automatic (all)
+     * @param array|NULL $itemsShipped Array of item entity id->qty to ship, or NULL if automatic (all)
      * @throws GatewayException
      */
     protected function actionShip(Order $order, $comment = '', $notify = 'false', $sendComment = 'false',
