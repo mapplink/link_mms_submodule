@@ -43,8 +43,6 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
     protected $curlHandle = NULL;
     /** @var string|NULL $this->authorisation */
     protected $authorisation = NULL;
-    /** @var Client $this->client */
-    protected $client;
     /** @var string|NULL $this->requestType */
     protected $requestType;
     /** @var  Request $this->request */
@@ -61,7 +59,8 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
     );
     /** @var array $this->additionalCurlOptions */
     protected $additionalCurlOptions = array();
-    /** @var array $this->clientOptions */
+    /** @var bool $this->responseContainsResult */
+    protected $responseContainsResult = TRUE;
 
 
     /**
@@ -95,6 +94,8 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
     public function init(Node $mmsNode)
     {
         $this->node = $mmsNode;
+        $this->resetResponseContainsResult();
+
         return (bool) $this->node;
     }
 
@@ -184,6 +185,41 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
         }
 
         return $url;
+    }
+
+    /**
+     * @return RestV1 $this
+     */
+    protected function setResponseContainsResult()
+    {
+        $this->responseContainsResult = TRUE;
+        return $this;
+    }
+
+    /**
+     * @return RestV1 $this
+     */
+    protected function unsetResponseContainsResult()
+    {
+        $this->responseContainsResult = FALSE;
+        return $this;
+    }
+
+    /**
+     * @return bool $resetResponseContainsResult
+     */
+    protected function resetResponseContainsResult()
+    {
+        return $this->setResponseContainsResult();
+    }
+
+    /**
+     * @return bool $isResponseContainsResult
+     */
+    protected function isResponseContainsResult()
+    {
+        $isResponseContainsResult = $this->responseContainsResult;
+        return $isResponseContainsResult;
     }
 
     /**
@@ -365,7 +401,7 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
             if (is_array($response) && array_key_exists('Result', $response)) {
                 $response = $response['Result'];
 
-            }elseif (isset($response['StatusCode'])) {
+            }elseif (isset($response['StatusCode']) && $this->isResponseContainsResult()) {
                 $this->getServiceLocator()->get('logService')
                     ->log(LogService::LEVEL_ERROR,
                         $logCode.'_err',
@@ -389,6 +425,7 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
         }else{
             $response['success'] = TRUE;
         }
+        $this->resetResponseContainsResult();
 
         return $response;
     }

@@ -134,7 +134,8 @@ class RestV1 extends RestCurl
             'order_items'=>$localOrderitemArray
         );
 
-        $response = $this->post($callType, $parameters);
+        $response = $this->unsetResponseContainsResult()
+            ->post($callType, $parameters);
 
         return $response['success'];
     }
