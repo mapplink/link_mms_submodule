@@ -112,8 +112,6 @@ class OrderGateway extends AbstractGateway
      */
     protected function isOrderToBeRetrieved(array $orderData, $sinceId = NULL)
     {
-        return TRUE;
-
         if (in_array($this->getOrderStatusFromOrderData($orderData), self::$mmsExcludeStatusses)) {
             $retrieve = FALSE;
         }elseif ($sinceId == 1
