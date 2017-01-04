@@ -812,7 +812,7 @@ class OrderGateway extends AbstractGateway
                                 'Unable to link product.',
                                 array('sku'=>$sku)
                             );
-                    }elseif (!is_null($localProductId)) {
+                    }elseif (!is_null($localProductId) && $storedLocalId != $localProductId) {
                         $this->_entityService->linkEntity($nodeId, $product, $localProductId);
                     }
                 }else{
@@ -844,7 +844,7 @@ class OrderGateway extends AbstractGateway
                                 'Unable to link stock item.',
                                 array('sku'=>$sku)
                             );
-                    }elseif (!is_null($localStockitemId)) {
+                    }elseif (!is_null($localStockitemId) && $storedLocalId != $localStockitemId) {
                         $this->_entityService->linkEntity($nodeId, $stockitem, $localStockitemId);
                     }
                 }else{
