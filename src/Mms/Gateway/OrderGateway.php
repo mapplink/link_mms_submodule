@@ -539,7 +539,7 @@ class OrderGateway extends AbstractGateway
         $data['base_to_currency_rate'] = $baseToCurrencyRate;
 //        $data['giftcard_total'] = $data['reward_total'] = $data['storecredit_total'] = 0;
 
-        if (isset($orderData['customer_email']) && $orderData['customer_email']) {
+        if (isset($data['customer_email']) && $data['customer_email']) {
             $nodeId = $this->_node->getNodeId();
             $customer = $this->_entityService
                 ->loadEntity($nodeId, 'customer', $this->getCustomerStoreId($storeId), $data['customer_email']);
