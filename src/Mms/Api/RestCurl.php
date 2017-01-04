@@ -135,7 +135,7 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
                 //
         }
 
-        $this->curlOptions[CURLOPT_HTTPHEADER] = $this->getHeaders($headers);
+        $this->curlOptions[CURLOPT_HTTPHEADER] = $this->getHeaders(array_unique($headers));
 
         return $this->curlHandle;
     }
@@ -349,7 +349,6 @@ abstract class RestCurl implements ServiceLocatorAwareInterface
             $headers = array(
                 'Authorization: '.$this->authorisation,
                 'Accept: application/json',
-                'Content-Type: application/json'
             );
             $this->initCurl($headers, $parameters);
 
