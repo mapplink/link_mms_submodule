@@ -30,6 +30,7 @@ class OrderGateway extends AbstractGateway
     const MMS_ORDER_UNIQUE_PREFIX = 'MMS-';
     const MMS_PAYMENT_CODE = 'mmspay';
     const MMS_FALLBACK_SKU = '<undefined on mms>';
+    const MMS_BUNDLE_SKU_SEPARATOR = '**';
 
     const MMS_STATUS_PAID = 'paid';
     const MMS_STATUS_PARTIALLY_SHIPPED = 'partially_shipped';
@@ -116,7 +117,7 @@ class OrderGateway extends AbstractGateway
         if (in_array($this->getOrderStatusFromOrderData($orderData), self::$mmsExcludeStatusses)) {
             $retrieve = FALSE;
         }elseif ($sinceId == 1
-          && in_array($this->getOrderStatusFromOrderData($orderData), self::$initialMmsExcludeStatusses)) {
+            && in_array($this->getOrderStatusFromOrderData($orderData), self::$initialMmsExcludeStatusses)) {
             $retrieve = FALSE;
         }else{
             $retrieve = TRUE;
@@ -718,12 +719,12 @@ class OrderGateway extends AbstractGateway
                                 'result no'=>count($results['localOrderIds']))
                         );
 
-                        foreach ($results['localOrderIds'] as $localOrderId) {
-                            $orderData = $this->rest->getOrderDetailsById($localOrderId);
-                            if ($this->isOrderToBeRetrieved($orderData, $sinceId)) {
-                                $success = $this->storeOrderData($orderData);
-                            }
+                    foreach ($results['localOrderIds'] as $localOrderId) {
+                        $orderData = $this->rest->getOrderDetailsById($localOrderId);
+                        if ($this->isOrderToBeRetrieved($orderData, $sinceId)) {
+                            $success = $this->storeOrderData($orderData);
                         }
+                    }
                 }else{
                     throw new MagelinkException('OrderIdsSinceResult did not contain "localOrderIds" key.');
                 }
@@ -829,7 +830,7 @@ class OrderGateway extends AbstractGateway
                         $this->getServiceLocator()->get('logService')
                             ->log(LogService::LEVEL_ERROR, 'mms_o_re_oi_nop',
                                 'No product existing for order item.', $logData);
-                        $productId = null;
+                        $productId = NULL;
                     }
 
                     $stockitem = $this->_entityService->loadEntity($nodeId, 'stockitem', 0, $sku);
@@ -860,15 +861,42 @@ class OrderGateway extends AbstractGateway
                     }
                 }
 
+                $bundleMessage = '';
+                $bundleSkuArray = explode(self::MMS_BUNDLE_SKU_SEPARATOR, $sku);
+                $isBundledProduct = (count($bundleSkuArray) > 1);
+
+                if (count($bundleSkuArray) > 2) {
+                    $bundleMessage .= 'Bundle sku contains more than 1 separator.';
+                }
+
+                $bundleQuantity = array_pop($bundleSkuArray);
+                $isInteger = ((string) intval($bundleQuantity) === ltrim($bundleQuantity, '0'));
+                $bundleQuantity = intval($bundleQuantity);
+
+                if ($isBundledProduct && $isInteger && $bundleQuantity > 0) {
+                    $sku = implode(self::MMS_BUNDLE_SKU_SEPARATOR, $bundleSkuArray);
+                }else{
+                    $bundleQuantity = 1;
+                    if ($isBundledProduct) {
+                        $bundleMessage .= ' Invalid bundle sku multiplier. Set multiplier to 1.';
+                    }
+                }
+
+                if (strlen($bundleMessage) > 0) {
+                    $this->getServiceLocator()->get('logService')
+                        ->log(LogService::LEVEL_ERROR, 'mms_o_re_oi_buex', trim($bundleMessage), $logData);
+                }
+                unset($bundleMessage, $bundleSkuArray, $isBundledProduct, $isInteger);
+
                 $data = array(
                     'product'=>$productId,
                     'sku'=>$sku,
                     'product_name'=>isset($item['name']) ? $item['name'] : '',
                     'is_physical'=>1,
                     'product_type'=>NULL,
-                    'quantity'=>$item['quantity'],
+                    'quantity'=>$item['quantity'] * $bundleQuantity,
                     'item_price'=>(isset($item['local_order_item_financials']['price'])
-                        ? $item['local_order_item_financials']['price'] : 0),
+                        ? $item['local_order_item_financials']['price'] / $bundleQuantity : 0),
                     'total_price'=>(isset($item['local_order_item_financials']['payment'])
                         ? $item['local_order_item_financials']['payment'] : 0),
                     'total_tax'=>(isset($item['local_order_item_financials']['tax'])
@@ -877,6 +905,7 @@ class OrderGateway extends AbstractGateway
                         ? $item['local_order_item_financials']['discount'] : 0),
                     'weight'=>(isset($item['item']['weight']) ? $item['item']['weight'] : 0),
                 );
+                unset($bundleQuantity);
 
                 if (isset($data['total_tax']) && isset($data['quantity']) && $data['quantity'] > 0) {
                     $data['item_tax'] = $data['total_tax'] / $data['quantity'];
@@ -920,7 +949,7 @@ class OrderGateway extends AbstractGateway
             foreach ($orderData['addresses'] as $key=>$address) {
                 if (isset($address['language_code'])) {
                     if (strtolower(substr($address['language_code'], 0, strlen($languageCode))) == $languageCode
-                      || is_null($languageCode)) {
+                        || is_null($languageCode)) {
                         $addressArray = $address;
                         $addressArray['address_id'] = uniqid();
                         break;
@@ -1054,7 +1083,7 @@ class OrderGateway extends AbstractGateway
      * @param array $addressData
      * @param array $orderData
      * @param string $type "billing" or "shipping"
-     * @return Order|null $entity
+     * @return Order|NULL $entity
      * @throws MagelinkException
      * @throws NodeException
      */
