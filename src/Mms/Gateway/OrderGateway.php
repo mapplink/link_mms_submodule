@@ -12,6 +12,7 @@ namespace Mms\Gateway;
 use Entity\Comment;
 use Entity\Entity;
 use Entity\Service\EntityService;
+use Entity\Wrapper\Address;
 use Entity\Wrapper\Order;
 use Entity\Wrapper\Orderitem;
 use Log\Service\LogService;
@@ -91,7 +92,6 @@ class OrderGateway extends AbstractGateway
      * Initialize the gateway and perform any setup actions required.
      * @param string $entityType
      * @return bool $success
-     * @throws MagelinkException
      * @throws GatewayException
      */
     protected function _init($entityType)
@@ -138,11 +138,12 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param Order $order
-     * @return bool isMmsOrder
+     * @return bool $isMmsOrder
      */
     public static function isMmsOrder(Order $order)
     {
-        return strpos($order->getUniqueId(), self::MMS_ORDER_UNIQUE_PREFIX) === 0;
+        $isMmsOrder = strpos($order->getUniqueId(), self::MMS_ORDER_UNIQUE_PREFIX) === 0;
+        return $isMmsOrder;
     }
 
     /**
@@ -196,7 +197,7 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param Order $order
-     * @return bool $fulfilledOrder
+     * @return bool $successfulFulfilledOrder
      */
     public function fulfilOrder(Order $order)
     {
@@ -205,7 +206,7 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param Order|int $orderOrStoreId
-     * @return int $storeId
+     * @return string|NULL $storeId
      */
     protected function getEntityStoreId($orderOrStoreId, $global)
     {
@@ -247,21 +248,21 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * @return int $appId
+     * @return string $appId
      */
     protected function getAppId()
     {
-        $marketplaceId = $this->_node->getConfig('app_id');
+        $appId = $this->_node->getConfig('app_id');
 
-        if (is_null($marketplaceId)) {
+        if (is_null($appId)) {
             throw new MagelinkException('Please define the app id.');
         }
 
-        return $marketplaceId;
+        return $appId;
     }
 
     /**
-     * @return int $appKey
+     * @return string $appKey
      */
     protected function getAppKey()
     {
@@ -275,7 +276,7 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * @return int $marketplaceId
+     * @return string $marketplaceId
      */
     protected function getMarketplaceId()
     {
@@ -289,7 +290,7 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * @return int $marketplaceId
+     * @return string $baseUrl
      */
     protected function getBaseUrl()
     {
@@ -304,7 +305,7 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param Order|int $orderOrStoreId
-     * @return int $storeId
+     * @return string $customerStoreId
      */
     protected function getCustomerStoreId($orderOrStoreId)
     {
@@ -314,7 +315,7 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param Order|int $orderOrStoreId
-     * @return int $storeId
+     * @return string $stockStoreId
      */
     protected function getStockStoreId($orderOrStoreId)
     {
@@ -340,8 +341,7 @@ class OrderGateway extends AbstractGateway
     /**
      * @param Order $order
      * @param Orderitem $orderitem
-     * @return bool|NULL
-     * @throws MagelinkException
+     * @return bool|NULL $success
      */
     protected function updateStockQuantities(Order $order, Orderitem $orderitem)
     {
@@ -435,11 +435,8 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * Store order with provided order data
      * @param array $orderData
      * @throws GatewayException
-     * @throws MagelinkException
-     * @throws NodeException
      */
     protected function storeOrderData(array $orderData)
     {
@@ -462,7 +459,7 @@ class OrderGateway extends AbstractGateway
             }
         }
 
-        $itemSubTotals = $baseToCurrencyRateGrandTotal = $baseToCurrencyRate = 0;
+        $baseToCurrencyRateGrandTotal = $baseToCurrencyRate = 0;
         foreach ($this->itemTotalCodes as $code=>$perItem) {
             $itemTotals[$code] = 0;
         }
@@ -688,8 +685,8 @@ class OrderGateway extends AbstractGateway
 
     /**
      * Retrieve and action all updated records (either from polling, pushed data, or other sources).
+     * @return int $resultsCount
      * @throws GatewayException
-     * @throws MagelinkException
      * @throws NodeException
      */
     protected function retrieveEntities()
@@ -761,8 +758,6 @@ class OrderGateway extends AbstractGateway
      * Create all the OrderItem entities for a given order
      * @param array $orderData
      * @param Order $order
-     * @throws MagelinkException
-     * @throws NodeException
      */
     protected function createItems(array $orderData, Order $order)
     {
@@ -853,10 +848,10 @@ class OrderGateway extends AbstractGateway
                             $this->_entityService->linkEntity($nodeId, $product, $localProductId);
                         }
                     }else{
+                        $productId = NULL;
                         $this->getServiceLocator()->get('logService')
                             ->log(LogService::LEVEL_ERROR, 'mms_o_re_oi_nop',
                                 'No product existing for order item.', $logData);
-                        $productId = NULL;
                     }
 
                     $stockitems = array_unique(array(
@@ -887,6 +882,8 @@ class OrderGateway extends AbstractGateway
                         $this->getServiceLocator()->get('logService')->log(LogService::LEVEL_ERROR,
                             'mms_o_re_oi_nosi', 'No stockitem existing for order item.', $logData);
                     }
+
+                    unset($product, $stockitem, $storedId, $linkLogData);
                 }
 
                 $data = array(
@@ -1007,6 +1004,7 @@ class OrderGateway extends AbstractGateway
     /**
      * @param array $orderData
      * @return Entity|NULL $customer
+     * @throws MagelinkException
      */
     protected function createCustomerEntity(array $orderData)
     {
@@ -1082,10 +1080,8 @@ class OrderGateway extends AbstractGateway
      * Creates an individual address entity (billing or shipping)
      * @param array $addressData
      * @param array $orderData
-     * @param string $type "billing" or "shipping"
-     * @return Order|NULL $entity
-     * @throws MagelinkException
-     * @throws NodeException
+     * @param string $type : "billing" or "shipping"
+     * @return Address|NULL $address
      */
     protected function createAddressEntity(array $addressData, array $orderData, $type)
     {
@@ -1094,9 +1090,9 @@ class OrderGateway extends AbstractGateway
         }
 
         $uniqueId = 'order-'.$orderData['marketplace_order_reference'].(strlen($type) > 0 ? '-'.$type : '');
-        $entity = $this->_entityService->loadEntity($this->_node->getNodeId(), 'address', 0, $uniqueId);
+        $address = $this->_entityService->loadEntity($this->_node->getNodeId(), 'address', 0, $uniqueId);
 
-        if (!$entity) {
+        if (!$address) {
             if (strlen($addressData['address_line_1']) > strlen($addressData['address_line_3'])) {
                 $streetArray = array(
                     trim($addressData['address_line_1']),
@@ -1120,10 +1116,10 @@ class OrderGateway extends AbstractGateway
             $data['country_code'] = isset($addressData['country_code']) ? $addressData['country_code'] : NULL;
             $data['telephone'] = isset($addressData['contact_phone_1']) ? $addressData['contact_phone_1'] : NULL;
 
-            $entity = $this->_entityService->createEntity($this->_node->getNodeId(), 'address', 0, $uniqueId, $data);
+            $address = $this->_entityService->createEntity($this->_node->getNodeId(), 'address', 0, $uniqueId, $data);
         }
 
-        return $entity;
+        return $address;
     }
 
     /**
@@ -1131,6 +1127,7 @@ class OrderGateway extends AbstractGateway
      * @param \Entity\Entity $entity
      * @param string[] $attributes
      * @param int $type
+     * @return bool|NULL $success
      */
     public function writeUpdates(\Entity\Entity $entity, $attributes, $type = \Entity\Update::TYPE_UPDATE)
     {
@@ -1141,10 +1138,8 @@ class OrderGateway extends AbstractGateway
     /**
      * Write out the given action.
      * @param \Entity\Action $action
-     * @return bool $success
+     * @return bool|NULL $success
      * @throws GatewayException
-     * @throws MagelinkException
-     * @throws NodeException
      */
     public function writeAction(\Entity\Action $action)
     {
@@ -1245,7 +1240,6 @@ class OrderGateway extends AbstractGateway
 
     /**
      * Handles refunding an order in Magento
-     *
      * @param Order $order
      * @param string $comment Optional comment to append to order
      * @param string $notify String boolean, whether to notify customer
@@ -1323,7 +1317,6 @@ class OrderGateway extends AbstractGateway
 
     /**
      * Handles shipping an order in Magento
-     *
      * @param Order $order
      * @param string $comment Optional comment to append to order
      * @param string $notify String boolean, whether to notify customer
