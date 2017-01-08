@@ -857,7 +857,8 @@ class OrderGateway extends AbstractGateway
                     $stockitems = array_unique(array(
                         $variationSku=>$this->_entityService->loadEntity($nodeId, 'stockitem', 0, $variationSku),
                         $sku=>$this->_entityService->loadEntity($nodeId, 'stockitem', 0, $sku)
-                    ));
+                    ), SORT_REGULAR);
+
                     foreach ($stockitems as $stockUnique=>$stockitem) {
                         if (!is_null($stockitem)) {
                             $storedId = $this->_entityService->getLocalId($nodeId, $stockitem);
