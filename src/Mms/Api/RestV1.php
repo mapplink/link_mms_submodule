@@ -150,7 +150,7 @@ class RestV1 extends RestCurl
         $variationId = $this->getLocalId($stockitem);
 
         $callType = 'variations/'.$variationId.'/inventory';
-        $parameters['market_place'] = $this->node->getConfig('marketplace_id');
+        $parameters['marketplace_id'] = $this->node->getConfig('marketplace_id');
         $response = $this->patch($callType, $parameters);
 
         if ($response['success']) {
