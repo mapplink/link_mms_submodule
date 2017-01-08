@@ -72,8 +72,10 @@ class StockGateway extends AbstractGateway
             $localId = $this->_entityService->getLocalId($nodeId, $stockitem);
             if ($localId && $this->rest) {
                 try{
-                    $newStock = $this->rest->setStock($stockitem, $stockitem->getData('available'));
-                    $success = !is_null($newStock);
+                    $available = $stockitem->getData('available');
+                    $newStock = $this->rest->setStock($stockitem, $available);
+                    $success = ($newStock == $available);
+
                     if ($success) {
                         $logLevel = LogService::LEVEL_INFO;
                         $logMessage .= 'was successful.';
@@ -105,7 +107,7 @@ class StockGateway extends AbstractGateway
         }
 
         $this->getServiceLocator()->get('logService')
-            ->log($logLevel, $logCode, $logMessage, $logData, $logEntities);
+            ->log($logLevel, $logCode, $logMessage, $logData);
 
         return $success;
     }
