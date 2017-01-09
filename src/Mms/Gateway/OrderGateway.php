@@ -770,16 +770,16 @@ class OrderGateway extends AbstractGateway
             $localProductId = (isset($item['item']['item_id']) ? $item['item']['item_id'] : NULL);
             $localStockitemId = (isset($item['item']['variation_id']) ? $item['item']['variation_id'] : NULL);
 
-            $itemMasterSku = (isset($item['item']['master_sku']) ? $item['item']['master_sku'] : NULL);
-            $itemSku = (isset($item['item']['sku']) ? $item['item']['sku'] : NULL);
-            if (!is_null($itemMasterSku)) {
-                $sku = $itemMasterSku;
+            $variationSku = (isset($item['item']['sku']) ? $item['item']['sku'] : NULL);
+            $itemSku = (isset($item['item']['master_sku']) ? $item['item']['master_sku'] : NULL);
+            if (!is_null($variationSku)){
+                $sku = $variationSku;
             }elseif (!is_null($itemSku)) {
                 $sku = $itemSku;
             }
 
             if (isset($sku)) {
-                $variationSku = $sku;
+                $rawSku = $sku;
                 $bundleMessage = '';
                 $bundleSkuArray = explode(self::MMS_BUNDLE_SKU_SEPARATOR, $sku);
                 $isBundledProduct = (count($bundleSkuArray) > 1);
@@ -804,11 +804,11 @@ class OrderGateway extends AbstractGateway
                 if (strlen($bundleMessage) > 0) {
                     $this->getServiceLocator()->get('logService')
                         ->log(LogService::LEVEL_ERROR, 'mms_o_re_oi_buex', trim($bundleMessage),
-                            array('sku'=>$variationSku, 'order unique'=>$uniqueOrderId, 'order item id'=>$localId));
+                            array('sku'=>$rawSku, 'order unique'=>$uniqueOrderId, 'order item id'=>$localId));
                 }
                 unset($bundleMessage, $bundleSkuArray, $isBundledProduct, $isInteger);
             }else{
-                $sku = $variationSku = self::MMS_FALLBACK_SKU;
+                $sku = $rawSku = self::MMS_FALLBACK_SKU;
             }
 
             $uniqueId = $uniqueOrderId.'-'.$sku.'-'.$localId;
@@ -827,9 +827,9 @@ class OrderGateway extends AbstractGateway
                     $this->getServiceLocator()->get('logService')
                         ->log(LogService::LEVEL_WARN, 'mms_o_re_oi_nsku',
                             'Item data did not contain a valid sku and therefore could not be associated to a product.',
-                            array('order unique'=>$uniqueId, 'item master sku'=>$itemMasterSku, 'item sku'=>$itemSku));
+                            array('order unique'=>$uniqueId, 'item sku'=>$itemSku, 'variation sku'=>$variationSku));
                 }else{
-                    $logData = array('sku'=>$variationSku, 'order unique'=>$uniqueOrderId, 'orderitem unique'=>$uniqueId);
+                    $logData = array('raw sku'=>$rawSku, 'order unique'=>$uniqueOrderId, 'orderitem unique'=>$uniqueId);
 
                     $product = $this->_entityService->loadEntity($nodeId, 'product', 0, $sku);
                     if ($product) {
@@ -855,8 +855,9 @@ class OrderGateway extends AbstractGateway
                     }
 
                     $stockitems = array_unique(array(
-                        $variationSku=>$this->_entityService->loadEntity($nodeId, 'stockitem', 0, $variationSku),
-                        $sku=>$this->_entityService->loadEntity($nodeId, 'stockitem', 0, $sku)
+                        $sku=>$this->_entityService->loadEntity($nodeId, 'stockitem', 0, $sku),
+// Disabled: Won't be implemented at this stage and most likely neither in the future
+//                        $rawSku=>$this->_entityService->loadEntity($nodeId, 'stockitem', 0, $rawSku)
                     ), SORT_REGULAR);
 
                     foreach ($stockitems as $stockUnique=>$stockitem) {
