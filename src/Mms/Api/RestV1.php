@@ -170,7 +170,7 @@ class RestV1 extends RestCurl
      */
     public function setStock(Stockitem $stockitem, $newQuantity)
     {
-        $parameters = array('available_quantity'=>$newQuantity);
+        $parameters = array('available_quantity'=>(int) $newQuantity);
         return $this->updateStock($stockitem, $parameters);
     }
 
@@ -182,7 +182,7 @@ class RestV1 extends RestCurl
     // ToDo (maybe): Make this method accessible
     private function adjustStock(Stockitem $stockitem, $adjustQuantity)
     {
-        $parameters = array('available_quantity_adjustment'=>$adjustQuantity);
+        $parameters = array('available_quantity_adjustment'=>(int) $adjustQuantity);
         return $this->updateStock($stockitem, $parameters);
     }
 
