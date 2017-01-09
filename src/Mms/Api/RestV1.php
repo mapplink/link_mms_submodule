@@ -151,7 +151,7 @@ class RestV1 extends RestCurl
 
         $callType = 'variations/'.$variationId.'/inventory';
         $parameters['marketplace_id'] = $this->node->getConfig('marketplace_id');
-        $response = $this->patch($callType, $parameters);
+        $response = $this->patch($callType, array($parameters));
 
         if ($response['success']) {
             // ToDo: Implement proper response if thats implemented on the MMS site
