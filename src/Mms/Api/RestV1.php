@@ -154,8 +154,8 @@ class RestV1 extends RestCurl
         $response = $this->patch($callType, array($parameters));
 
         if ($response['success']) {
-            // ToDo: Implement proper response if thats implemented on the MMS site
-            $newStock = $parameters['available_quantity'];
+            $result = current($response);
+            $newStock = $result['available_quantity'];
         }else{
             $newStock = NULL;
         }
