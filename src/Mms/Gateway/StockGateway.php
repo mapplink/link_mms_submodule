@@ -58,8 +58,6 @@ class StockGateway extends AbstractGateway
      */
     public function writeUpdates(\Entity\Entity $stockitem, $attributes, $type=\Entity\Update::TYPE_UPDATE)
     {
-        return NULL;
-
         $nodeId = $this->_node->getNodeId();
         $uniqueId = $stockitem->getUniqueId();
         $localId = $this->_entityService->getLocalId($nodeId, $stockitem);
