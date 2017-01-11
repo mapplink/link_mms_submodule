@@ -86,7 +86,7 @@ class StockGateway extends AbstractGateway
 
                     if (!isset($newStock)) {
                         $this->getServiceLocator()->get('logService')
-                            ->log(LogService::LEVEL_DEBUG, $logCode.'_callbysku', $message, $logData);
+                            ->log(LogService::LEVEL_WARN, $logCode.'_callbysku', $message, $logData);
                         $newStock = $logData['new stock'] = $this->rest
                             ->setStockBySku($stockitem->getUniqueId(), $available);
                     }
@@ -97,10 +97,14 @@ class StockGateway extends AbstractGateway
                         $logLevel = LogService::LEVEL_INFO;
                         $logCode .= '_suc';
                         $logMessage .= 'was successful.';
-                    }else{
+                    }elseif ($localId) {
                         $logLevel = LogService::LEVEL_ERROR;
                         $logCode .= '_fail';
                         $logMessage .= 'failed due to a API problem.';
+                    }else{
+                        $logLevel = LogService::LEVEL_WARN;
+                        $logCode .= '_ignore';
+                        $logMessage .= 'failed due to a API problem and was therefore ignored (no local id).';
                     }
                 }catch (\Exception $exception) {
                     $success = FALSE;
@@ -110,7 +114,7 @@ class StockGateway extends AbstractGateway
                 }
             }elseif (isset($localId)) {
                 $success = FALSE;
-                $logLevel = LogService::LEVEL_WARN;
+                $logLevel = LogService::LEVEL_ERROR;
                 $logCode .= '_norest';
                 $logMessage .= 'could not be executed due to a problem with the REST initialisation.';
             }else{
@@ -121,9 +125,9 @@ class StockGateway extends AbstractGateway
             }
         }else{
             $success = TRUE;
-            $logLevel = LogService::LEVEL_DEBUG;
+            $logLevel = LogService::LEVEL_WARN;
             $logCode .= '_skip';
-            $logMessage .= 'was skipped.';
+            $logMessage .= 'was skipped. Availabilty is not set.';
             $logData['attribute'] = implode(', ', $attributes);
         }
 
