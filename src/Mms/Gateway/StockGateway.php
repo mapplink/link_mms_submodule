@@ -109,10 +109,12 @@ class StockGateway extends AbstractGateway
                     $logMessage .= 'failed with an exception: '.$exception->getMessage();
                 }
             }elseif (isset($localId)) {
+                $success = FALSE;
                 $logLevel = LogService::LEVEL_WARN;
                 $logCode .= '_norest';
                 $logMessage .= 'could not be executed due to a problem with the REST initialisation.';
             }else{
+                $success = FALSE;
                 $logLevel = LogService::LEVEL_ERROR;
                 $logCode .= '_none';
                 $logMessage .= 'could not be processed. Neither local id nor REST was available.';
