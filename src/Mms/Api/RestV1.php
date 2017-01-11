@@ -191,7 +191,7 @@ class RestV1 extends RestCurl
      * @param array $parameters
      * @return int|NULL $newStock
      */
-    protected function updateStockBy($sku, array $parameters)
+    protected function updateStockBySku($sku, array $parameters)
     {
         return NULL;
 
