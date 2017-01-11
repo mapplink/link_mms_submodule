@@ -186,4 +186,38 @@ class RestV1 extends RestCurl
         return $this->updateStock($stockitem, $parameters);
     }
 
+    /**
+     * @param string $sku
+     * @param array $parameters
+     * @return int|NULL $newStock
+     */
+    protected function updateStockBy($sku, array $parameters)
+    {
+        return NULL;
+
+        $callType = 'variations/'.$sku.'/inventory';
+        $parameters['marketplace_id'] = $this->node->getConfig('marketplace_id');
+        $response = $this->patch($callType, array($parameters));
+
+        if ($response['success']) {
+            $result = current($response);
+            $newStock = $result['available_quantity'];
+        }else{
+            $newStock = NULL;
+        }
+
+        return $newStock;
+    }
+
+    /**
+     * @param string $sku
+     * @param int $newQuantity
+     * @return int|NULL $newStock
+     */
+    public function setStockBySku($sku, $newQuantity)
+    {
+        $parameters = array('available_quantity'=>(int) $newQuantity);
+        return $this->updateStockBySku($sku, $parameters);
+    }
+
 }

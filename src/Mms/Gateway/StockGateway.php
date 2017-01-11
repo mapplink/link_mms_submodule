@@ -68,32 +68,53 @@ class StockGateway extends AbstractGateway
 
         if (in_array('available', $attributes)) {
             $localId = $this->_entityService->getLocalId($nodeId, $stockitem);
-            if ($localId && $this->rest) {
+            if ($this->rest) {
                 try{
                     $available = $logData['available'] = $stockitem->getData('available');
-                    $newStock = $logData['new stock'] = $this->rest->setStock($stockitem, $available);
-                    $success = ($newStock == $available);
+                    if ($localId) {
+                        try{
+                            $newStock = $logData['new stock'] = $this->rest->setStock($stockitem, $available);
+                        }catch (\Exception $exception) {}
 
+                        if (!isset($newStock) || ($newStock != $available)) {
+                            $message = $logMessage.' via local id failed due to a API problem.';
+                            unset($newStock);
+                        }
+                    }else{
+                        $message = $logMessage.'could not be executed due to a missing local id.';
+                    }
+
+                    if (!isset($newStock)) {
+                        $this->getServiceLocator()->get('logService')
+                            ->log(LogService::LEVEL_DEBUG, $logCode.'_callbysku', $message, $logData);
+                        $newStock = $logData['new stock'] = $this->rest
+                            ->setStockBySku($stockitem->getUniqueId(), $available);
+                    }
+                    unset($message);
+
+                    $success = ($newStock == $available);
                     if ($success) {
                         $logLevel = LogService::LEVEL_INFO;
+                        $logCode .= '_suc';
                         $logMessage .= 'was successful.';
                     }else{
                         $logLevel = LogService::LEVEL_ERROR;
+                        $logCode .= '_fail';
                         $logMessage .= 'failed due to a API problem.';
                     }
                 }catch (\Exception $exception) {
                     $success = FALSE;
                     $logLevel = LogService::LEVEL_ERROR;
+                    $logCode .= '_ex';
                     $logMessage .= 'failed with an exception: '.$exception->getMessage();
                 }
-            }elseif ($this->rest) {
-                $logLevel = LogService::LEVEL_ERROR;
-                $logMessage .= 'could not be executed due to a missing local id.';
             }elseif (isset($localId)) {
                 $logLevel = LogService::LEVEL_WARN;
+                $logCode .= '_norest';
                 $logMessage .= 'could not be executed due to a problem with the REST initialisation.';
             }else{
                 $logLevel = LogService::LEVEL_ERROR;
+                $logCode .= '_none';
                 $logMessage .= 'could not be processed. Neither local id nor REST was available.';
             }
         }else{
