@@ -34,7 +34,7 @@ class OrderGateway extends AbstractGateway
     const MMS_BUNDLE_SKU_SEPARATOR = '**';
 
     const MMS_STATUS_PAID = 'paid';
-    const MMS_STATUS_PARTIALLY_SHIPPED = 'partially_shipped';
+    const MMS_STATUS_PARTIALLY_SHIPPED = 'partially shipped';
     const MMS_STATUS_SHIPPED = 'shipped';
     const MMS_STATUS_COMPLETED = 'completed';
     const MMS_STATUS_CLOSED = 'closed';
