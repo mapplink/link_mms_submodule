@@ -28,7 +28,7 @@ class OrderGateway extends AbstractGateway
     const GATEWAY_ENTITY = 'order';
     const GATEWAY_ENTITY_CODE = 'o';
 
-    const MMS_ORDER_UNIQUE_PREFIX = 'MMS-';
+    const MMS_ORDER_UNIQUE_PREFIX = 'M';
     const MMS_PAYMENT_CODE = 'mmspay';
     const MMS_FALLBACK_SKU = '<undefined on mms>';
     const MMS_BUNDLE_SKU_SEPARATOR = '**';
