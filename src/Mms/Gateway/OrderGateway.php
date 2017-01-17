@@ -31,7 +31,6 @@ class OrderGateway extends AbstractGateway
     const MMS_ORDER_UNIQUE_PREFIX = 'M';
     const MMS_PAYMENT_CODE = 'mmspay';
     const MMS_FALLBACK_SKU = '<undefined on mms>';
-    const MMS_BUNDLE_SKU_SEPARATOR = '**';
 
     const MMS_STATUS_PAID = 'paid';
     const MMS_STATUS_PARTIALLY_SHIPPED = 'partially shipped';
@@ -781,7 +780,7 @@ class OrderGateway extends AbstractGateway
             if (isset($sku)) {
                 $rawSku = $sku;
                 $bundleMessage = '';
-                $bundleSkuArray = explode(self::MMS_BUNDLE_SKU_SEPARATOR, $sku);
+                $bundleSkuArray = explode(StockGateway::MMS_BUNDLE_SKU_SEPARATOR, $sku);
                 $isBundledProduct = (count($bundleSkuArray) > 1);
 
                 if (count($bundleSkuArray) > 2) {
@@ -793,7 +792,7 @@ class OrderGateway extends AbstractGateway
                 $bundleQuantity = intval($bundleQuantity);
 
                 if ($isBundledProduct && $isInteger && $bundleQuantity > 0) {
-                    $sku = implode(self::MMS_BUNDLE_SKU_SEPARATOR, $bundleSkuArray);
+                    $sku = implode(StockGateway::MMS_BUNDLE_SKU_SEPARATOR, $bundleSkuArray);
                 }else{
                     $bundleQuantity = 1;
                     if ($isBundledProduct) {
