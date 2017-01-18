@@ -512,7 +512,7 @@ class OrderGateway extends AbstractGateway
             $totalCode = self::getTotalCode($code);
             $data[$totalCode] = $orderData[$totalCode] = $itemTotals[$code];
         }
-        unset($data['price_total']);
+        unset($data[self::getTotalCode('price')]);
 
         // Convert payment total to the correct format and key, if exists.
         $paymentTotalCode = self::getTotalCode('payment');
@@ -887,36 +887,41 @@ class OrderGateway extends AbstractGateway
                     unset($product, $stockitem, $storedId, $linkLogData);
                 }
 
+                $quantity = $item['quantity'] * $bundleQuantity;
+                if (isset($item['local_order_item_financials']['tax'])) {
+                    $totalTax = $item['local_order_item_financials']['tax'];
+                    $itemTax = ($quantity > 0 ? $totalTax / $quantity : $totalTax);
+                }else {
+                    $totalTax = $itemTax = 0;
+                }
+                if (isset($item['local_order_item_financials']['discount'])) {
+                    $totalDiscount = $item['local_order_item_financials']['discount'];
+                    $itemDiscount = ($quantity > 0 ? $totalDiscount / $quantity : $totalDiscount);
+                }else {
+                    $totalDiscount = $itemDiscount = 0;
+                }
+                if (isset($item['local_order_item_financials']['price'])) {
+                    $itemPrice = $item['local_order_item_financials']['price'] / $bundleQuantity + $itemDiscount;
+                }else {
+                    $itemPrice = $itemDiscount;
+                }
+
                 $data = array(
                     'product'=>$productId,
                     'sku'=>$sku,
                     'product_name'=>isset($item['name']) ? $item['name'] : '',
                     'is_physical'=>1,
                     'product_type'=>NULL,
-                    'quantity'=>$item['quantity'] * $bundleQuantity,
-                    'item_price'=>(isset($item['local_order_item_financials']['price'])
-                        ? $item['local_order_item_financials']['price'] / $bundleQuantity : 0),
+                    'quantity'=>$quantity,
+                    'item_price'=>$itemPrice,
+                    'item_discount'=>$itemDiscount,
+                    'item_tax'=>$itemTax,
                     'total_price'=>(isset($item['local_order_item_financials']['payment'])
                         ? $item['local_order_item_financials']['payment'] : 0),
-                    'total_tax'=>(isset($item['local_order_item_financials']['tax'])
-                        ? $item['local_order_item_financials']['tax'] : 0),
-                    'total_discount'=>(isset($item['local_order_item_financials']['discount'])
-                        ? $item['local_order_item_financials']['discount'] : 0),
+                    'total_discount'=>$totalDiscount,
+                    'total_tax'=>$totalTax,
                     'weight'=>(isset($item['item']['weight']) ? $item['item']['weight'] : 0),
                 );
-                unset($bundleQuantity);
-
-                if (isset($data['total_tax']) && isset($data['quantity']) && $data['quantity'] > 0) {
-                    $data['item_tax'] = $data['total_tax'] / $data['quantity'];
-                }else{
-                    $data['item_tax'] = 0;
-                }
-
-                if (isset($data['total_discount']) && isset($data['quantity']) && $data['quantity'] > 0) {
-                    $data['item_discount'] = $data['total_discount'] / $data['quantity'];
-                }else{
-                    $data['item_discount'] = 0;
-                }
 
                 $this->getServiceLocator()->get('logService')
                     ->log(LogService::LEVEL_INFO, 'mms_o_re_cr_oi',
