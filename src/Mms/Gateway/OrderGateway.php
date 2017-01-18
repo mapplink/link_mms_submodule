@@ -1016,7 +1016,7 @@ class OrderGateway extends AbstractGateway
     {
         $englishAddress = $this->getEnglishAddressArray($orderData);
         $chineseAddress = $this->getChineseAddressArray($orderData);
-        $firstAddress = $this->getFirstAddressArray($orderData);
+        $firstAddress = $address = $this->getFirstAddressArray($orderData);
 
         if (isset($englishAddress['name'])) {
             $name = $englishAddress['name'];
@@ -1031,6 +1031,40 @@ class OrderGateway extends AbstractGateway
             $message = isset($orderData['order_id']) ? $orderData['order_id'] : 'without order id';
             throw new MagelinkException(' No address name found on MMS order '.$message.'.');
             $name = $email = '';
+        }
+
+        if (!$email) {
+            $fake = 'tm_'.$name;
+            $maxLength = 103;
+            $addressKeys = array(
+                'address_line_1'=>1,
+                'contact_phone_1'=>2,
+                'postal_code'=>2,
+                'city'=>3,
+                'company'=>3,
+                'province'=>4
+            );
+            $fieldsAdded = 0;
+
+            foreach (array($englishAddress, $firstAddress, $chineseAddress) as $address) {
+                foreach ($addressKeys as $key=>$numberOfFields) {
+                    if (isset($address[$key]) && strlen($address[$key]) > 0) {
+                        $fake .= $address[$key];
+
+                        if ($fieldsAdded++ == 0) {
+                            $maxFields = $numberOfFields;
+                        }
+                        if ($fieldsAdded >= $maxFields) {
+                            break;
+                        }
+                    }
+                }
+                if ($fieldsAdded >= $maxFields) {
+                    break;
+                }
+            }
+
+            $email = substr(preg_replace('#\W+#', '', $fake), 0, $maxLength).'@noemail.healthpost.co.nz';
         }
 
         $data = self::getNameArray($name);
