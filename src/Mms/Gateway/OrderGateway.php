@@ -535,6 +535,10 @@ class OrderGateway extends AbstractGateway
         $data['base_to_currency_rate'] = $baseToCurrencyRate;
 //        $data['giftcard_total'] = $data['reward_total'] = $data['storecredit_total'] = 0;
 
+        if (!isset($data['customer_email']) || strlen($data['customer_email']) == 0) {
+            $data['customer_email'] = $this->getFakeEmail($orderData);
+        }
+
         if (isset($data['customer_email']) && $data['customer_email']) {
             $nodeId = $this->_node->getNodeId();
             $customer = $this->_entityService
@@ -542,8 +546,14 @@ class OrderGateway extends AbstractGateway
             if ($customer && $customer->getId()) {
                 $data['customer'] = $customer;
             }else{
+                $orderData['customer_email'] = $data['customer_email'];
                 $data['customer'] = $this->createCustomerEntity($orderData);
+                unset($orderData['customer_email']);
             }
+        }else{
+//            $data['flagged'] = 1;
+            $this->getServiceLocator()->get('logService')->log(LogService::LEVEL_ERROR, 'mms_o_nocu_err',
+                'New order '.$uniqueId.' has no customer assigned.', array('order unique'=>$uniqueId));
         }
 
         $needsUpdate = TRUE;
@@ -1009,10 +1019,9 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param array $orderData
-     * @return Entity|NULL $customer
-     * @throws MagelinkException
+     * @return Entity|NULL $fakeEmail
      */
-    protected function createCustomerEntity(array $orderData)
+    protected function getFakeEmail(array $orderData)
     {
         $englishAddress = $this->getEnglishAddressArray($orderData);
         $chineseAddress = $this->getChineseAddressArray($orderData);
@@ -1028,12 +1037,12 @@ class OrderGateway extends AbstractGateway
             $name = $firstAddress['name'];
             $email = $firstAddress['contact_email_1'];
         }else{
-            $message = isset($orderData['order_id']) ? $orderData['order_id'] : 'without order id';
-            throw new MagelinkException(' No address name found on MMS order '.$message.'.');
             $name = $email = '';
         }
 
-        if (!$email) {
+        if ($email) {
+            $fakeEmail = $email;
+        }else{
             $fake = 'tm_'.$name;
             $maxLength = 103;
             $addressKeys = array(
@@ -1064,7 +1073,37 @@ class OrderGateway extends AbstractGateway
                 }
             }
 
-            $email = substr(preg_replace('#\W+#', '', $fake), 0, $maxLength).'@noemail.healthpost.co.nz';
+            $fakeEmail = substr(preg_replace('#\W+#', '', $fake), 0, $maxLength).'@noemail.healthpost.co.nz';
+        }
+
+        return $fakeEmail;
+    }
+
+    /**
+     * @param array $orderData
+     * @return Entity|NULL $customer
+     * @throws MagelinkException
+     */
+    protected function createCustomerEntity(array $orderData)
+    {
+        $englishAddress = $this->getEnglishAddressArray($orderData);
+        $chineseAddress = $this->getChineseAddressArray($orderData);
+        $firstAddress = $address = $this->getFirstAddressArray($orderData);
+
+        if (isset($englishAddress['name'])) {
+            $name = $englishAddress['name'];
+            $email = $englishAddress['contact_email_1'];
+        }elseif (isset($chineseAddress['name'])) {
+            $name = $chineseAddress['name'];
+            $email = $chineseAddress['contact_email_1'];
+        }elseif (isset($firstAddress['name'])) {
+            $name = $firstAddress['name'];
+            $email = $firstAddress['contact_email_1'];
+        }else{
+            $message = isset($orderData['order_id']) ? $orderData['order_id'] : 'without order id';
+            throw new MagelinkException(' No address name found on MMS order '.$message.'.');
+            $name = '';
+            $email = $orderData[''];
         }
 
         $data = self::getNameArray($name);
