@@ -1058,7 +1058,7 @@ class OrderGateway extends AbstractGateway
             foreach (array($englishAddress, $firstAddress, $chineseAddress) as $address) {
                 foreach ($addressKeys as $key=>$numberOfFields) {
                     if (isset($address[$key]) && strlen($address[$key]) > 0) {
-                        $fake .= $address[$key];
+                         $fake .= strtolower($address[$key]);
 
                         if ($fieldsAdded++ == 0) {
                             $maxFields = $numberOfFields;
