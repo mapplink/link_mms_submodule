@@ -459,41 +459,38 @@ class OrderGateway extends AbstractGateway
         }
 
         $baseToCurrencyRateGrandTotal = $baseToCurrencyRate = 0;
-        foreach ($this->itemTotalCodes as $code=>$perItem) {
+        foreach ($this->itemTotalCodes as $code=>$isPerItem) {
             $itemTotals[$code] = 0;
         }
 
         if (isset($orderData['order_items'])) {
             foreach ($orderData['order_items'] as $orderitem) {
-                if (isset($orderitem['quantity']) && isset($orderitem['item'])) {
-                    foreach ($orderitem['item'] as $item) {
-                        $rowTotals = array();
+                if (isset($orderitem['quantity']) && isset($orderitem['local_order_item_financials'])) {
+                    $rowTotals = array();
 
-                        foreach ($this->itemTotalCodes as $code=>$perItem) {
-                            if (isset($item['local_order_item_financials'][$code])) {
-                                $fieldValue = $item['local_order_item_financials'][$code];
+                    foreach ($this->itemTotalCodes as $code=>$isPerItem) {
+                        if (isset($orderitem['local_order_item_financials'][$code])) {
+                            $fieldValue = $orderitem['local_order_item_financials'][$code];
 
-                                if ($perItem) {
-                                    $rowTotals[$code] = $orderitem['quantity'] * $fieldValue;
-                                }else{
-                                    $rowTotals[$code] = $fieldValue;
-                                }
-
-                                $itemTotals[$code] += $rowTotals[$code];
+                            if ($isPerItem) {
+                                $rowTotals[$code] = $orderitem['quantity'] * $fieldValue;
+                            }else{
+                                $rowTotals[$code] = $fieldValue;
                             }
+                            $itemTotals[$code] += $rowTotals[$code];
                         }
+                    }
 
-                        $itemBaseToCurrencyRate = (isset($orderData['marketplace_to_local_exchange_rate_applied'])
-                            ? $orderData['marketplace_to_local_exchange_rate_applied']
-                            : (isset($orderData['marketplace_to_local_exchange_rate_estimated'])
-                                ? $orderData['marketplace_to_local_exchange_rate_estimated']
-                                : 0
-                            ));
+                    $itemBaseToCurrencyRate = (isset($orderData['marketplace_to_local_exchange_rate_applied'])
+                        ? $orderData['marketplace_to_local_exchange_rate_applied']
+                        : (isset($orderData['marketplace_to_local_exchange_rate_estimated'])
+                            ? $orderData['marketplace_to_local_exchange_rate_estimated']
+                            : 0
+                        ));
 
-                        if ($itemBaseToCurrencyRate > 0) {
-                            $baseToCurrencyRate += $itemBaseToCurrencyRate * $rowTotals['price'];
-                            $baseToCurrencyRateGrandTotal += $rowTotals['price'];
-                        }
+                    if ($itemBaseToCurrencyRate > 0) {
+                        $baseToCurrencyRate += $itemBaseToCurrencyRate * $rowTotals['price'];
+                        $baseToCurrencyRateGrandTotal += $rowTotals['price'];
                     }
                 }
 
@@ -512,6 +509,9 @@ class OrderGateway extends AbstractGateway
             $totalCode = self::getTotalCode($code);
             $data[$totalCode] = $orderData[$totalCode] = $itemTotals[$code];
         }
+        // Shipping is included in the order item prices
+        $data[self::getTotalCode('shipping')] = 0;
+        // Total price is not to be assigned
         unset($data[self::getTotalCode('price')]);
 
         // Convert payment total to the correct format and key, if exists.
@@ -774,13 +774,13 @@ class OrderGateway extends AbstractGateway
         $uniqueOrderId = $this->getUniqueIdFromOrderData($orderData);
         $parentId = $order->getId();
 
-        foreach ($orderData['order_items'] as $item) {
-            $localId = (isset($item['order_item_id']) ? $item['order_item_id'] : NULL);
-            $localProductId = (isset($item['item']['item_id']) ? $item['item']['item_id'] : NULL);
-            $localStockitemId = (isset($item['item']['variation_id']) ? $item['item']['variation_id'] : NULL);
+        foreach ($orderData['order_items'] as $orderitem) {
+            $localId = (isset($orderitem['order_item_id']) ? $orderitem['order_item_id'] : NULL);
+            $localProductId = (isset($orderitem['item']['item_id']) ? $orderitem['item']['item_id'] : NULL);
+            $localStockitemId = (isset($orderitem['item']['variation_id']) ? $orderitem['item']['variation_id'] : NULL);
 
-            $variationSku = (isset($item['item']['sku']) ? $item['item']['sku'] : NULL);
-            $itemSku = (isset($item['item']['master_sku']) ? $item['item']['master_sku'] : NULL);
+            $variationSku = (isset($orderitem['item']['sku']) ? $orderitem['item']['sku'] : NULL);
+            $itemSku = (isset($orderitem['item']['master_sku']) ? $orderitem['item']['master_sku'] : NULL);
             if (!is_null($variationSku)){
                 $sku = $variationSku;
             }elseif (!is_null($itemSku)) {
@@ -897,21 +897,21 @@ class OrderGateway extends AbstractGateway
                     unset($product, $stockitem, $storedId, $linkLogData);
                 }
 
-                $quantity = $item['quantity'] * $bundleQuantity;
-                if (isset($item['local_order_item_financials']['tax'])) {
-                    $totalTax = $item['local_order_item_financials']['tax'];
+                $quantity = $orderitem['quantity'] * $bundleQuantity;
+                if (isset($orderitem['local_order_item_financials']['tax'])) {
+                    $totalTax = $orderitem['local_order_item_financials']['tax'];
                     $itemTax = ($quantity > 0 ? $totalTax / $quantity : $totalTax);
                 }else {
                     $totalTax = $itemTax = 0;
                 }
-                if (isset($item['local_order_item_financials']['discount'])) {
-                    $totalDiscount = $item['local_order_item_financials']['discount'];
+                if (isset($orderitem['local_order_item_financials']['discount'])) {
+                    $totalDiscount = $orderitem['local_order_item_financials']['discount'];
                     $itemDiscount = ($quantity > 0 ? $totalDiscount / $quantity : $totalDiscount);
                 }else {
                     $totalDiscount = $itemDiscount = 0;
                 }
-                if (isset($item['local_order_item_financials']['price'])) {
-                    $itemPrice = $item['local_order_item_financials']['price'] / $bundleQuantity + $itemDiscount;
+                if (isset($orderitem['local_order_item_financials']['price'])) {
+                    $itemPrice = $orderitem['local_order_item_financials']['price'] / $bundleQuantity + $itemDiscount;
                 }else {
                     $itemPrice = $itemDiscount;
                 }
@@ -919,18 +919,18 @@ class OrderGateway extends AbstractGateway
                 $data = array(
                     'product'=>$productId,
                     'sku'=>$sku,
-                    'product_name'=>isset($item['name']) ? $item['name'] : '',
+                    'product_name'=>isset($orderitem['name']) ? $orderitem['name'] : '',
                     'is_physical'=>1,
                     'product_type'=>NULL,
                     'quantity'=>$quantity,
                     'item_price'=>$itemPrice,
                     'item_discount'=>$itemDiscount,
                     'item_tax'=>$itemTax,
-                    'total_price'=>(isset($item['local_order_item_financials']['payment'])
-                        ? $item['local_order_item_financials']['payment'] : 0),
+                    'total_price'=>(isset($orderitem['local_order_item_financials']['payment'])
+                        ? $orderitem['local_order_item_financials']['payment'] : 0),
                     'total_discount'=>$totalDiscount,
                     'total_tax'=>$totalTax,
-                    'weight'=>(isset($item['item']['weight']) ? $item['item']['weight'] : 0),
+                    'weight'=>(isset($orderitem['item']['weight']) ? $orderitem['item']['weight'] : 0),
                 );
 
                 $this->getServiceLocator()->get('logService')
