@@ -910,6 +910,11 @@ class OrderGateway extends AbstractGateway
                 }else {
                     $totalDiscount = $itemDiscount = 0;
                 }
+                if (isset($orderitem['local_order_item_financials']['payment'])) {
+                    $totalPrice = $orderitem['local_order_item_financials']['payment'] + $totalDiscount;
+                }else{
+                    $totalPrice = $totalDiscount;
+                }
                 if (isset($orderitem['local_order_item_financials']['price'])) {
                     $itemPrice = $orderitem['local_order_item_financials']['price'] / $bundleQuantity + $itemDiscount;
                 }else {
@@ -926,8 +931,7 @@ class OrderGateway extends AbstractGateway
                     'item_price'=>$itemPrice,
                     'item_discount'=>$itemDiscount,
                     'item_tax'=>$itemTax,
-                    'total_price'=>(isset($orderitem['local_order_item_financials']['payment'])
-                        ? $orderitem['local_order_item_financials']['payment'] : 0),
+                    'total_price'=>$totalPrice,
                     'total_discount'=>$totalDiscount,
                     'total_tax'=>$totalTax,
                     'weight'=>(isset($orderitem['item']['weight']) ? $orderitem['item']['weight'] : 0),
