@@ -1019,7 +1019,7 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param array $orderData
-     * @return Entity|NULL $fakeEmail
+     * @return string $fakeEmail
      */
     protected function getFakeEmail(array $orderData)
     {
@@ -1041,7 +1041,7 @@ class OrderGateway extends AbstractGateway
         }
 
         if ($email) {
-            $fakeEmail = $email;
+            $fake = $email;
         }else{
             $fake = 'tm_'.$name;
             $maxLength = 103;
@@ -1058,7 +1058,7 @@ class OrderGateway extends AbstractGateway
             foreach (array($englishAddress, $firstAddress, $chineseAddress) as $address) {
                 foreach ($addressKeys as $key=>$numberOfFields) {
                     if (isset($address[$key]) && strlen($address[$key]) > 0) {
-                         $fake .= strtolower($address[$key]);
+                         $fake .= $address[$key];
 
                         if ($fieldsAdded++ == 0) {
                             $maxFields = $numberOfFields;
@@ -1073,10 +1073,10 @@ class OrderGateway extends AbstractGateway
                 }
             }
 
-            $fakeEmail = substr(preg_replace('#\W+#', '', $fake), 0, $maxLength).'@noemail.healthpost.co.nz';
+            $fake = strtolower(substr(preg_replace('#\W+#', '', $fake), 0, $maxLength).'@noemail.healthpost.co.nz');
         }
 
-        return $fakeEmail;
+        return $fake;
     }
 
     /**
