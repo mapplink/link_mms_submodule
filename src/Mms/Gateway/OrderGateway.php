@@ -549,13 +549,11 @@ class OrderGateway extends AbstractGateway
                 $data['customer'] = $customer;
             }else{
                 try {
-                    $orderData['customer_email'] = $data['customer_email'];
                     $data['customer'] = $this->createCustomerEntity($orderData);
                 }catch (\Exception $exception) {
                     $message = 'Exception on customer creation for order '.$uniqueId.': '.$exception->getMessage();
                     throw new GatewayException($message, $exception->getCode(), $exception);
                 }
-                unset($orderData['customer_email']);
             }
         }else{
 //            $data['flagged'] = 1;
