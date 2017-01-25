@@ -546,8 +546,13 @@ class OrderGateway extends AbstractGateway
             if ($customer && $customer->getId()) {
                 $data['customer'] = $customer;
             }else{
-                $orderData['customer_email'] = $data['customer_email'];
-                $data['customer'] = $this->createCustomerEntity($orderData);
+                try {
+                    $orderData['customer_email'] = $data['customer_email'];
+                    $data['customer'] = $this->createCustomerEntity($orderData);
+                }catch (\Exception $exception) {
+                    $message = 'Exception on customer creation for order '.$uniqueId.': '.$exception->getMessage();
+                    throw new GatewayException($message, $exception->getCode(), $exception);
+                }
                 unset($orderData['customer_email']);
             }
         }else{
@@ -576,7 +581,8 @@ class OrderGateway extends AbstractGateway
             );
 
             if (!$existingEntity) {
-                $this->_entityService->beginEntityTransaction('mms-order-'.$uniqueId);
+                $transaction = 'mms-order-'.$uniqueId;
+                $this->_entityService->beginEntityTransaction($transaction);
                 try{
                     $data = array_merge(
                         $this->createAddresses($orderData),
@@ -603,10 +609,11 @@ class OrderGateway extends AbstractGateway
 
                     $this->createItems($orderData, $existingEntity);
 
-                    $this->_entityService->commitEntityTransaction('mms-order-'.$uniqueId);
+                    $this->_entityService->commitEntityTransaction($transaction);
                 }catch (\Exception $exception) {
-                    $this->_entityService->rollbackEntityTransaction('mms-order-'.$uniqueId);
-                    throw new GatewayException($exception->getMessage(), $exception->getCode(), $exception);
+                    $this->_entityService->rollbackEntityTransaction($transaction);
+                    $message = 'Rollback of '.$transaction.': '.$exception->getMessage();
+                    throw new GatewayException($message, $exception->getCode(), $exception);
                 }
 
                 $needsUpdate = FALSE;
@@ -943,12 +950,28 @@ class OrderGateway extends AbstractGateway
                         array('orderitem unique'=>$uniqueId, 'quantity'=>$data['quantity'], 'data'=>$data));
 
                 $storeId = $order->getStoreId();
-                $orderitem = $this->_entityService
-                    ->createEntity($nodeId, 'orderitem', $storeId, $uniqueId, $data, $parentId);
-                $this->_entityService
-                    ->linkEntity($nodeId, $orderitem, $localId);
 
-                $this->updateStockQuantities($order, $orderitem);
+                try {
+                    $orderitem = $this->_entityService
+                        ->createEntity($nodeId, 'orderitem', $storeId, $uniqueId, $data, $parentId);
+                }catch (\Exception $exception) {
+                    $message = 'Exception on orderitem ('.$uniqueId.') creation: '.$exception->getMessage();
+                    throw new GatewayException($message, $exception->getCode(), $exception);
+                }
+                try {
+                    $this->_entityService
+                        ->linkEntity($nodeId, $orderitem, $localId);
+                }catch (\Exception $exception) {
+                    $message = 'Exception on orderitem ('.$uniqueId.') linking: '.$exception->getMessage();
+                    throw new GatewayException($message, $exception->getCode(), $exception);
+                }
+
+                try {
+                    $this->updateStockQuantities($order, $orderitem);
+                }catch (\Exception $exception) {
+                    $message = 'Exception on stock quantities update on '.$uniqueId.': '.$exception->getMessage();
+                    throw new GatewayException($message, $exception->getCode(), $exception);
+                }
             }
         }
     }
@@ -1061,14 +1084,16 @@ class OrderGateway extends AbstractGateway
 
             foreach (array($englishAddress, $firstAddress, $chineseAddress) as $address) {
                 foreach ($addressKeys as $key=>$numberOfFields) {
-                    if (isset($address[$key]) && strlen($address[$key]) > 0) {
-                         $fake .= $address[$key];
-
-                        if ($fieldsAdded++ == 0) {
-                            $maxFields = $numberOfFields;
-                        }
-                        if ($fieldsAdded >= $maxFields) {
-                            break;
+                    if (isset($address[$key]) && preg_replace('#\W+#', '', strlen($address[$key])) > 0) {
+                        $part = preg_replace('#\W+#', '', strlen($address[$key]));
+                        if (strlen($part) > 0) {
+                            $fake .= preg_replace('#\W+#', '', $address[$key]);
+                            if ($fieldsAdded++ == 0) {
+                                $maxFields = $numberOfFields;
+                            }
+                            if ($fieldsAdded >= $maxFields) {
+                                break;
+                            }
                         }
                     }
                 }
@@ -1096,20 +1121,19 @@ class OrderGateway extends AbstractGateway
 
         if (isset($englishAddress['name'])) {
             $name = $englishAddress['name'];
-            $email = $englishAddress['contact_email_1'];
         }elseif (isset($chineseAddress['name'])) {
             $name = $chineseAddress['name'];
-            $email = $chineseAddress['contact_email_1'];
         }elseif (isset($firstAddress['name'])) {
             $name = $firstAddress['name'];
-            $email = $firstAddress['contact_email_1'];
         }else{
             $message = isset($orderData['order_id']) ? $orderData['order_id'] : 'without order id';
             throw new MagelinkException(' No address name found on MMS order '.$message.'.');
-            $name = '';
-            $email = $orderData[''];
+            $name = $email = '';
         }
 
+        $email = $orderData['customer_email'];
+
+        $storeId = $this->getCustomerStoreId(self::getStoreIdFromMarketPlaceId($orderData['marketplace_id']));
         $data = self::getNameArray($name);
 //        $data['accredo_customer_id'] = NULL;
         $data['customer_type'] = 'MMS customer';
@@ -1117,7 +1141,7 @@ class OrderGateway extends AbstractGateway
 //        $data['enable_newsletter'] = NULL;
 //        $data['newslettersubscription'] = NULL;
 
-        $entity = $this->_entityService->createEntity($this->_node->getNodeId(), 'customer', 0, $email, $data);
+        $entity = $this->_entityService->createEntity($this->_node->getNodeId(), 'customer', $storeId, $email, $data);
 
         return $entity;
     }
