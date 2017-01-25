@@ -85,6 +85,8 @@ class OrderGateway extends AbstractGateway
         'tax'=>FALSE,
         'weight'=>FALSE
     );
+    /** @var array $this->addressArrayByLanguageCode */
+    protected $addressArrayByLanguageCode = array();
 
 
     /**
@@ -536,7 +538,7 @@ class OrderGateway extends AbstractGateway
 //        $data['giftcard_total'] = $data['reward_total'] = $data['storecredit_total'] = 0;
 
         if (!isset($data['customer_email']) || strlen($data['customer_email']) == 0) {
-            $data['customer_email'] = $this->getFakeEmail($orderData);
+            $data['customer_email'] = $this->getCustomerEmail($orderData);
         }
 
         if (isset($data['customer_email']) && $data['customer_email']) {
@@ -984,21 +986,27 @@ class OrderGateway extends AbstractGateway
     protected function getAddressArrayByLanguageCode(array $orderData, $languageCode = NULL)
     {
         $addressArray = array();
+        $languageCode = (is_string($languageCode) ? ltrim(rtrim($languageCode, ' -')).'-' : NULL);
 
-        if (isset($orderData['addresses'])) {
-            foreach ($orderData['addresses'] as $key=>$address) {
-                if (isset($address['language_code'])) {
-                    if (strtolower(substr($address['language_code'], 0, strlen($languageCode))) == $languageCode
-                        || is_null($languageCode)) {
-                        $addressArray = $address;
-                        $addressArray['address_id'] = uniqid();
-                        break;
+        if (!array_key_exists($languageCode, $this->addressArrayByLanguageCode)) {
+            if (isset($orderData['addresses'])) {
+                foreach ($orderData['addresses'] as $key=>$address) {
+                    if (isset($address['language_code'])) {
+                        $addressLanguageCode = strtolower(substr($address['language_code'], 0, strlen($languageCode)));
+                        if ($addressLanguageCode == $languageCode || is_null($languageCode)) {
+                            $languageCode = $addressLanguageCode;
+                            $addressArray = $address;
+                            $addressArray['address_id'] = uniqid();
+                            break;
+                        }
                     }
                 }
             }
+
+            $this->addressArrayByLanguageCode[$languageCode] = $addressArray;
         }
 
-        return $addressArray;
+        return $this->addressArrayByLanguageCode[$languageCode];
     }
 
     /**
@@ -1007,7 +1015,7 @@ class OrderGateway extends AbstractGateway
      */
     protected function getChineseAddressArray(array $orderData)
     {
-        return $this->getAddressArrayByLanguageCode($orderData, 'zh-');
+        return $this->getAddressArrayByLanguageCode($orderData, 'zh');
     }
 
     /**
@@ -1016,7 +1024,7 @@ class OrderGateway extends AbstractGateway
      */
     protected function getEnglishAddressArray(array $orderData)
     {
-        return $this->getAddressArrayByLanguageCode($orderData, 'en-');
+        return $this->getAddressArrayByLanguageCode($orderData, 'en');
     }
 
     /**
@@ -1046,31 +1054,52 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param array $orderData
-     * @return string $fakeEmail
+     * @throws MagelinkException
+     * @return string $customerName
      */
-    protected function getFakeEmail(array $orderData)
+    protected function getCustomerName(array $orderData)
     {
         $englishAddress = $this->getEnglishAddressArray($orderData);
         $chineseAddress = $this->getChineseAddressArray($orderData);
-        $firstAddress = $address = $this->getFirstAddressArray($orderData);
+        $firstAddress = $this->getFirstAddressArray($orderData);
 
         if (isset($englishAddress['name'])) {
             $name = $englishAddress['name'];
-            $email = $englishAddress['contact_email_1'];
         }elseif (isset($chineseAddress['name'])) {
             $name = $chineseAddress['name'];
-            $email = $chineseAddress['contact_email_1'];
         }elseif (isset($firstAddress['name'])) {
             $name = $firstAddress['name'];
-            $email = $firstAddress['contact_email_1'];
         }else{
-            $name = $email = '';
+            $message = isset($orderData['order_id']) ? $orderData['order_id'] : 'without order id';
+            throw new MagelinkException(' No address name found on MMS order '.$message.'.');
+            $name = '';
         }
 
-        if ($email) {
-            $fake = $email;
+        return $name;
+    }
+
+    /**
+     * @param array $orderData
+     * @return string $customerEmail
+     */
+    protected function getCustomerEmail(array $orderData)
+    {
+        $englishAddress = $this->getEnglishAddressArray($orderData);
+        $chineseAddress = $this->getChineseAddressArray($orderData);
+        $firstAddress = $this->getFirstAddressArray($orderData);
+
+        if (isset($englishAddress['contact_email_1'])) {
+            $email = $englishAddress['contact_email_1'];
+        }elseif (isset($chineseAddress['contact_email_1'])) {
+            $email = $chineseAddress['contact_email_1'];
+        }elseif (isset($firstAddress['contact_email_1'])) {
+            $email = $firstAddress['contact_email_1'];
         }else{
-            $fake = 'tm_'.$name;
+            $email = '';
+        }
+
+        if (!is_string($email) || strlen($email) < 6) {
+            $email = 'tm_'.$this->getCustomerName($orderData);
             $maxLength = 103;
             $addressKeys = array(
                 'address_line_1'=>1,
@@ -1087,7 +1116,7 @@ class OrderGateway extends AbstractGateway
                     if (isset($address[$key]) && preg_replace('#\W+#', '', strlen($address[$key])) > 0) {
                         $part = preg_replace('#\W+#', '', strlen($address[$key]));
                         if (strlen($part) > 0) {
-                            $fake .= preg_replace('#\W+#', '', $address[$key]);
+                            $email .= preg_replace('#\W+#', '', $address[$key]);
                             if ($fieldsAdded++ == 0) {
                                 $maxFields = $numberOfFields;
                             }
@@ -1102,10 +1131,10 @@ class OrderGateway extends AbstractGateway
                 }
             }
 
-            $fake = strtolower(substr(preg_replace('#\W+#', '', $fake), 0, $maxLength).'@noemail.healthpost.co.nz');
+            $email = strtolower(substr(preg_replace('#\W+#', '', $email), 0, $maxLength).'@noemail.healthpost.co.nz');
         }
 
-        return $fake;
+        return $email;
     }
 
     /**
@@ -1115,25 +1144,10 @@ class OrderGateway extends AbstractGateway
      */
     protected function createCustomerEntity(array $orderData)
     {
-        $englishAddress = $this->getEnglishAddressArray($orderData);
-        $chineseAddress = $this->getChineseAddressArray($orderData);
-        $firstAddress = $address = $this->getFirstAddressArray($orderData);
-
-        if (isset($englishAddress['name'])) {
-            $name = $englishAddress['name'];
-        }elseif (isset($chineseAddress['name'])) {
-            $name = $chineseAddress['name'];
-        }elseif (isset($firstAddress['name'])) {
-            $name = $firstAddress['name'];
-        }else{
-            $message = isset($orderData['order_id']) ? $orderData['order_id'] : 'without order id';
-            throw new MagelinkException(' No address name found on MMS order '.$message.'.');
-            $name = $email = '';
-        }
-
-        $email = $orderData['customer_email'];
-
+        $name = $this->getCustomerName($orderData);
+        $email = $this->getCustomerEmail($orderData);
         $storeId = $this->getCustomerStoreId(self::getStoreIdFromMarketPlaceId($orderData['marketplace_id']));
+
         $data = self::getNameArray($name);
 //        $data['accredo_customer_id'] = NULL;
         $data['customer_type'] = 'MMS customer';
