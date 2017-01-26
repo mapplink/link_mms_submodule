@@ -552,7 +552,10 @@ class OrderGateway extends AbstractGateway
                     $data['customer'] = $this->createCustomerEntity($orderData);
                 }catch (\Exception $exception) {
                     $message = 'Exception on customer creation for order '.$uniqueId.': '.$exception->getMessage();
-                    throw new GatewayException($message, $exception->getCode(), $exception);
+//                    throw new GatewayException($message, $exception->getCode(), $exception);
+                    $data['customer'] = NULL;
+                    $this->getServiceLocator()->get('logService')->log(LogService::LEVEL_ERROR, 'mms_o_cu_err',
+                        $message, array('order unique'=>$uniqueId));
                 }
             }
         }else{
@@ -1142,18 +1145,22 @@ class OrderGateway extends AbstractGateway
      */
     protected function createCustomerEntity(array $orderData)
     {
-        $name = $this->getCustomerName($orderData);
-        $email = $this->getCustomerEmail($orderData);
+        $nodeId = $this->_node->getNodeId();
         $storeId = $this->getCustomerStoreId(self::getStoreIdFromMarketPlaceId($orderData['marketplace_id']));
+        $email = $this->getCustomerEmail($orderData);
 
-        $data = self::getNameArray($name);
-//        $data['accredo_customer_id'] = NULL;
-        $data['customer_type'] = 'MMS customer';
-//        $data['date_of_birth'] = NULL;
-//        $data['enable_newsletter'] = NULL;
-//        $data['newslettersubscription'] = NULL;
+        $entity = $this->_entityService->loadEntity($nodeId, 'customer', $storeId, $email);
 
-        $entity = $this->_entityService->createEntity($this->_node->getNodeId(), 'customer', $storeId, $email, $data);
+        if (!$entity || !$entity->getId()) {
+            $data = self::getNameArray($this->getCustomerName($orderData));
+//            $data['accredo_customer_id'] = NULL;
+            $data['customer_type'] = 'MMS customer';
+//            $data['date_of_birth'] = NULL;
+//            $data['enable_newsletter'] = NULL;
+//            $data['newslettersubscription'] = NULL;
+
+            $entity = $this->_entityService->createEntity($nodeId, 'customer', $storeId, $email, $data);
+        }
 
         return $entity;
     }
