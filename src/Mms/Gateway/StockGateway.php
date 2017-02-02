@@ -3,17 +3,14 @@
  * @category Magento
  * @package Magento\Gateway
  * @author Andreas Gerhards <andreas@lero9.co.nz>
- * @copyright Copyright (c) 2014 LERO9 Ltd.
+ * @copyright Copyright (c) 2016 LERO9 Ltd.
  * @license Commercial - All Rights Reserved
  */
 
 namespace Mms\Gateway;
 
-use Entity\Service\EntityService;
 use Log\Service\LogService;
 use Magelink\Exception\MagelinkException;
-use Node\AbstractNode;
-use Node\Entity;
 
 
 class StockGateway extends AbstractGateway
@@ -65,10 +62,8 @@ class StockGateway extends AbstractGateway
         $uniqueId = $stockitem->getUniqueId();
         $localId = $this->_entityService->getLocalId($nodeId, $stockitem);
 
-        $tmallBundles = preg_replace('#\s+#', '', $product->getData('tmall_bundles', FALSE));
-        $isMmsEntity = (bool) $tmallBundles;
-        $mmsQuantities = explode(',', $tmallBundles);
-        unset($tmallBundles);
+        $isMmsEntity = ProductGateway::isMmsEntity($product);
+        $mmsQuantities = ProductGateway::getTmallQuantities($product);
 
         $logCode = 'mms_si';
         $logMessagePrefix = 'Stock update for '.$uniqueId.' ';
