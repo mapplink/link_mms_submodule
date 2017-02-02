@@ -9,9 +9,7 @@
 
 namespace Mms\Gateway;
 
-use Entity\Comment;
 use Entity\Entity;
-use Entity\Service\EntityService;
 use Entity\Wrapper\Address;
 use Entity\Wrapper\Order;
 use Entity\Wrapper\Orderitem;
@@ -19,7 +17,6 @@ use Log\Service\LogService;
 use Magelink\Exception\MagelinkException;
 use Magelink\Exception\NodeException;
 use Magelink\Exception\GatewayException;
-use Node\AbstractNode;
 
 
 class OrderGateway extends AbstractGateway
@@ -828,6 +825,8 @@ class OrderGateway extends AbstractGateway
                 unset($bundleMessage, $bundleSkuArray, $isBundledProduct, $isInteger);
             }else{
                 $sku = $rawSku = self::MMS_FALLBACK_SKU;
+                $isBundledProduct = FALSE;
+                $bundleQuantity = 1;
             }
 
             $uniqueId = $uniqueOrderId.'-'.$sku.'-'.$localId;
@@ -853,6 +852,14 @@ class OrderGateway extends AbstractGateway
                     $product = $this->_entityService->loadEntity($nodeId, 'product', 0, $sku);
                     if ($product) {
                         $productId = $product->getId();
+
+                        $mmsQuantities = ProductGateway::getTmallQuantities($product);
+                        if (!in_array($bundleQuantity, $mmsQuantities)) {
+                            $mmsQuantities[] = $bundleQuantity;
+                            $data = array('tmall_bundles'=>implode(',', sort($mmsQuantities, SORT_NUMERIC)));
+                            $this->_entityService->updateEntity($nodeId, $product, $data);
+                        }
+
                         $storedId = $this->_entityService->getLocalId($nodeId, $product);
                         if (!is_null($storedId) && !is_null($localProductId) && $storedId != $localProductId) {
                             $this->_entityService->unlinkEntity($nodeId, $product);
