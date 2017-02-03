@@ -193,17 +193,57 @@ class RestV1 extends RestCurl
      */
     protected function updateStockBySku($sku, array $parameters)
     {
-        return NULL;
-
-        $callType = 'variations/'.$sku.'/inventory';
+        $callType = 'items?sku='.urlencode($sku);
         $parameters['marketplace_id'] = $this->node->getConfig('marketplace_id');
-        $response = $this->patch($callType, array($parameters));
+        $response = $this->get($callType);
 
         if ($response['success']) {
-            $result = current($response);
-            $newStock = $result['available_quantity'];
-        }else{
+            unset($response['success'], $variationId);
+            while ($subsetArray = each($response) && !isset($variationId)) {
+                $subset = $subsetArray['value'];
+                if (isset($subset['variations'])) {
+                    foreach ($subset['variations'] as $variation) {
+                        $logData = array('call type'=>$callType, 'sku'=>$sku);
+
+                        if (!isset($variation['sku'])) {
+                            $logLevel = LogService::LEVEL_ERROR;
+                            $message = 'There is no sku on the reponse of '.$callType.'.';
+                        }elseif ($sku !== $variation['sku']) {
+                            $logLevel = LogService::LEVEL_ERROR;
+                            $message = 'The reponse of '.$callType.' contained a different SKU.';
+                            $logData['variation sku'] = $variation['sku'];
+                        }
+
+                        if (isset($variation['variation_id'])) {
+                            $variationId = $logData['variation id'] = $variation['variation_id'];
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isset($variationId)) {
+            $callType = 'variations/'.$variationId.'/inventory';
+            $parameters['marketplace_id'] = $this->node->getConfig('marketplace_id');
+            $response = $this->patch($callType, array($parameters));
+
+            if ($response['success']) {
+                $result = current($response);
+                $newStock = $result['available_quantity'];
+            }else {
+                $newStock = NULL;
+            }
+        }else {
             $newStock = NULL;
+            $logLevel = LogService::LEVEL_ERROR;
+            $message = 'No variation id could be retrieved via '.$callType.'.';
+        }
+
+        if (isset($logLevel) && isset($message)) {
+            $logData['new stock'] = $newStock;
+            $this->getServiceLocator()->get('logService')
+                ->log($logLevel, $this->getLogCodePrefix().'_si_upderr', $message, $logData);
         }
 
         return $newStock;
