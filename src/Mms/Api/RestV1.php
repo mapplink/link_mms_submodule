@@ -199,7 +199,7 @@ class RestV1 extends RestCurl
 
         if ($response['success']) {
             unset($response['success'], $variationId);
-            while ($subsetArray = each($response) && !isset($variationId)) {
+            while (($subsetArray = each($response)) && !isset($variationId)) {
                 $subset = $subsetArray['value'];
                 if (isset($subset['variations'])) {
                     foreach ($subset['variations'] as $variation) {
@@ -234,7 +234,7 @@ class RestV1 extends RestCurl
             }else {
                 $newStock = NULL;
             }
-        }else {
+        }else{
             $newStock = NULL;
             $logLevel = LogService::LEVEL_ERROR;
             $message = 'No variation id could be retrieved via '.$callType.'.';
