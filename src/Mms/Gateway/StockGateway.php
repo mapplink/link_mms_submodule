@@ -87,8 +87,13 @@ class StockGateway extends AbstractGateway
                 $remainingQuantities = count($mmsQuantities);
                 foreach ($mmsQuantities as $multiplier) {
                     try{
-                        $sku = $uniqueId.($multiplier == 1 ? '' : self::MMS_BUNDLE_SKU_SEPARATOR.$multiplier);
-                        $available = $logData['available'] = $stockitem->getData('available');
+                        $available = $logData['available'] = $stockitem->getData('available', 0);
+                        if ($multiplier == 1) {
+                            $sku = $uniqueId;
+                        }else{
+                            $sku = $uniqueId.self::MMS_BUNDLE_SKU_SEPARATOR.$multiplier;
+                            $available = $logData['available / multiplier'] = floor($available / $multiplier);
+                        }
 
                         if ($localId && $multiplier == 1) {
                             try{
