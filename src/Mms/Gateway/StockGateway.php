@@ -65,7 +65,7 @@ class StockGateway extends AbstractGateway
         $isMmsEntity = ProductGateway::isMmsEntity($product);
         $mmsQuantities = ProductGateway::getTmallQuantities($product);
 
-        $logCode = 'mms_si';
+        $logCodePrefix = 'mms_si';
         $logMessagePrefix = 'Stock update for '.$uniqueId.' ';
         $logMessage = '';
         $logData = array('node'=>$nodeId, 'id'=>$stockitem->getEntityId(), 'unique'=>$uniqueId, 'local'=>$localId);
@@ -73,17 +73,18 @@ class StockGateway extends AbstractGateway
         if (!$isMmsEntity) {
             $success = NULL;
             $logLevel = LogService::LEVEL_WARN;
-            $logCode .= '_nmms';
-            $logMessage .= 'was skipped. This item is not defined as a MMS product.';
+            $logCode = $logCodePrefix.'_nmms';
+            $logMessage = $logMessagePrefix.'was skipped. This item is not defined as a MMS product.';
         }elseif (!in_array('available', $attributes)) {
             $success = NULL;
             $logLevel = LogService::LEVEL_WARN;
-            $logCode .= '_skip';
-            $logMessage .= 'was skipped. Availabilty is not set.';
+            $logCode = $logCodePrefix.'_skip';
+            $logMessage .= $logMessagePrefix.'was skipped. Availabilty is not set.';
             $logData['attribute'] = implode(', ', $attributes);
         }else{
             $localId = $this->_entityService->getLocalId($nodeId, $stockitem);
             if ($this->rest) {
+                $remainingQuantities = count($mmsQuantities);
                 foreach ($mmsQuantities as $multiplier) {
                     try{
                         $sku = $uniqueId.($multiplier == 1 ? '' : self::MMS_BUNDLE_SKU_SEPARATOR.$multiplier);
@@ -107,7 +108,7 @@ class StockGateway extends AbstractGateway
                         if (!isset($newStock)) {
                             if (isset($message)) {
                                 $this->getServiceLocator()->get('logService')
-                                    ->log(LogService::LEVEL_WARN, $logCode.'_callbysku', trim($message), $logData);
+                                    ->log(LogService::LEVEL_WARN, $logCodePrefix.'_callbysku', trim($message), $logData);
                             }
                             $newStock = $logData['new stock'] = $this->rest->setStockBySku($sku, $available);
                         }
@@ -115,34 +116,38 @@ class StockGateway extends AbstractGateway
                         $success = ($newStock == $available);
                         if ($success) {
                             $logLevel = LogService::LEVEL_INFO;
-                            $logCode .= '_suc';
-                            $logMessage .= 'was successful.';
+                            $logCode = $logCodePrefix.'_suc';
+                            $logMessage = $logMessagePrefix.'was successful.';
                         }elseif ($localId) {
                             $logLevel = LogService::LEVEL_ERROR;
-                            $logCode .= '_fail';
-                            $logMessage .= 'failed due to a API problem.';
+                            $logCode = $logCodePrefix.'_fail';
+                            $logMessage = $logMessagePrefix.'failed due to a API problem.';
                         }else{
                             $logLevel = LogService::LEVEL_WARN;
-                            $logCode .= '_ignore';
+                            $logCode = $logCodePrefix.'_ignore';
                             $logMessage .= 'failed due to a API problem and was therefore ignored (no local id).';
                         }
                         unset($message, $newStock);
-                    }catch (\Exception $exception) {
+                    }catch(\Exception $exception) {
                         $success = FALSE;
                         $logLevel = LogService::LEVEL_ERROR;
-                        $logCode .= '_ex';
+                        $logCode = $logMessagePrefix.'_ex';
                         $logMessage .= 'failed with an exception: '.$exception->getMessage();
+                    }
+
+                    if (--$remainingQuantities > 0) {
+                        $this->getServiceLocator()->get('logService')->log($logLevel, $logCode, $logMessage, $logData);
                     }
                 }
             }elseif (isset($localId)) {
                 $success = FALSE;
                 $logLevel = LogService::LEVEL_ERROR;
-                $logCode .= '_norest';
+                $logCode = $logMessagePrefix.'_norest';
                 $logMessage .= 'could not be executed due to a problem with the REST initialisation.';
             }else{
                 $success = FALSE;
                 $logLevel = LogService::LEVEL_ERROR;
-                $logCode .= '_none';
+                $logCode = $logMessagePrefix.'_none';
                 $logMessage .= 'could not be processed. Neither local id nor REST was available.';
             }
         }
