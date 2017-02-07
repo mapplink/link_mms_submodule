@@ -822,7 +822,7 @@ class OrderGateway extends AbstractGateway
                         ->log(LogService::LEVEL_ERROR, 'mms_o_re_oi_buex', trim($bundleMessage),
                             array('sku'=>$rawSku, 'order unique'=>$uniqueOrderId, 'order item id'=>$localId));
                 }
-                unset($bundleMessage, $bundleSkuArray, $isBundledProduct, $isInteger);
+                unset($bundleMessage, $bundleSkuArray, $isInteger);
             }else{
                 $sku = $rawSku = self::MMS_FALLBACK_SKU;
                 $isBundledProduct = FALSE;
@@ -855,7 +855,7 @@ class OrderGateway extends AbstractGateway
 
                         $mmsQuantities = ProductGateway::getTmallQuantities($product);
                         if (!in_array($bundleQuantity, $mmsQuantities)) {
-                            $mmsQuantities[] = $bundleQuantity;
+                            $mmsQuantities[] = intval($bundleQuantity);
                             sort($mmsQuantities, SORT_NUMERIC);
                             $data = array('tmall_bundles'=>implode(',', $mmsQuantities));
                             $this->_entityService->updateEntity($nodeId, $product, $data);
@@ -871,7 +871,7 @@ class OrderGateway extends AbstractGateway
                         if (is_null($localProductId) && is_null($storedId)) {
                             $this->getServiceLocator()->get('logService')
                                 ->log(LogService::LEVEL_ERROR, 'mms_o_re_oi_nlp', 'Unable to link product.', $logData);
-                        }elseif (!is_null($localProductId) && $storedId != $localProductId) {
+                        }elseif (!is_null($localProductId) && $storedId != $localProductId && !$isBundledProduct) {
                             $this->_entityService->linkEntity($nodeId, $product, $localProductId);
                         }
                     }else{
