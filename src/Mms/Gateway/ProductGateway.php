@@ -24,7 +24,7 @@ class ProductGateway extends AbstractGateway
      */
     protected static function getSanitisedTmallBundles(\Entity\Wrapper\Product $product)
     {
-        $tmallBundles = preg_replace('#\s+#', '', $product->getData('tmall_bundles', FALSE));
+        $tmallBundles = preg_replace('#\s+#', '', $product->getData('tmall_bundles', ''));
         return $tmallBundles;
     }
 
@@ -44,7 +44,13 @@ class ProductGateway extends AbstractGateway
      */
     public static function getTmallQuantities(\Entity\Wrapper\Product $product)
     {
-        $mmsQuantities = explode(',', self::getSanitisedTmallBundles($product));
+        $mmsQuantities = array();
+        foreach(explode(',', self::getSanitisedTmallBundles($product)) as $value) {
+            if ($value && is_numeric($value)) {
+                $mmsQuantities[] = $value;
+            }
+        }
+
         return $mmsQuantities;
     }
 

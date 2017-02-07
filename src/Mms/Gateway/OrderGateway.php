@@ -856,7 +856,8 @@ class OrderGateway extends AbstractGateway
                         $mmsQuantities = ProductGateway::getTmallQuantities($product);
                         if (!in_array($bundleQuantity, $mmsQuantities)) {
                             $mmsQuantities[] = $bundleQuantity;
-                            $data = array('tmall_bundles'=>implode(',', sort($mmsQuantities, SORT_NUMERIC)));
+                            sort($mmsQuantities, SORT_NUMERIC);
+                            $data = array('tmall_bundles'=>implode(',', $mmsQuantities));
                             $this->_entityService->updateEntity($nodeId, $product, $data);
                         }
 
