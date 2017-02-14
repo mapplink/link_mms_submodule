@@ -441,7 +441,8 @@ class OrderGateway extends AbstractGateway
         $logLevel = LogService::LEVEL_INFO;
         $logMessageSuffix = $logCodeSuffix = '';
 
-        $data = array();
+        $data = $this->addressArrayByLanguageCode = array();
+
         $storeId = self::getStoreIdFromMarketPlaceId($orderData['marketplace_id']);
         $uniqueId = $this->getUniqueIdFromOrderData($orderData);
         $localId = $orderData['order_id'];
