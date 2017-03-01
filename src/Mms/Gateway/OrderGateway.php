@@ -557,8 +557,13 @@ class OrderGateway extends AbstractGateway
                 }
             }
         }else{
-//            $data['flagged'] = 1;
-            $this->getServiceLocator()->get('logService')->log(LogService::LEVEL_ERROR, 'mms_o_nocu_err',
+            if ($this->isOrderToBeRetrieved($orderData)) {
+//                $data['flagged'] = 1;
+                $logLevel = LogService::LEVEL_ERROR;
+            }else{
+                $logLevel = LogService::LEVEL_WARN;
+            }
+            $this->getServiceLocator()->get('logService')->log($logLevel, 'mms_o_nocu_err',
                 'New order '.$uniqueId.' has no customer assigned.', array('order unique'=>$uniqueId));
         }
 
