@@ -9,7 +9,9 @@
 
 namespace Mms\Gateway;
 
-use Node\AbstractGateway;
+use Entity\Action;
+use Entity\Entity;
+use Entity\Update;
 
 
 class CreditmemoGateway extends AbstractGateway {
@@ -18,16 +20,16 @@ class CreditmemoGateway extends AbstractGateway {
     /**
      * Initialize the gateway and perform any setup actions required.
      * @param string $entityType
-     * @return boolean
+     * @return bool $success;
      */
     public function _init($entity_type)
     {
-        return;
+        return TRUE;
     }
 
     /**
      * Retrieve and action all updated records (either from polling, pushed data, or other sources).
-     * @return array $retrieveResults
+     * @return int|NULL $retrievedResults
      */
     protected function retrieveEntities()
     {
@@ -36,19 +38,23 @@ class CreditmemoGateway extends AbstractGateway {
 
     /**
      * Write out all the updates to the given entity.
-     * @param \Entity\Entity $entity
-     * @param \Entity\Attribute[] $attributes
+     * @param Entity $entity
+     * @param array $attributes
+     * @param int $type
+     * @return NULL
      */
-    public function writeUpdates(\Entity\Entity $entity, $attributes, $type = \Entity\Update::TYPE_UPDATE)
+    public function writeUpdates(Entity $entity, $attributes, $type = Update::TYPE_UPDATE)
     {
         return NULL;
     }
 
     /**
      * Write out the given action.
-     * @param \Entity\Action $action
+     * @param Action $action
+     * @return bool|NULL $success
      */
-    public function writeAction(\Entity\Action $action)
+
+    public function writeAction(Action $action)
     {
         return NULL;
     }
