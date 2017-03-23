@@ -1057,7 +1057,11 @@ class OrderGateway extends AbstractGateway
      */
     protected function getNameArray($name)
     {
-        $nameParts = array_map('trim', explode(' ', trim($name)));
+        if (strpos($name, '/') !== FALSE) {
+            $nameParts = array_map('trim', explode('/', trim($name)));
+        }else {
+            $nameParts = array_map('trim', explode(' ', trim($name)));
+        }
         $nameArray = array(
             'last_name'=>array_pop($nameParts),
             'first_name'=>array_shift($nameParts),
