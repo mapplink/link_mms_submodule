@@ -176,12 +176,16 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * @param string $orderitemStatus
+     * @param array $orderitemStatus
      * @return bool $isShippable
      */
-    protected static function isShippableOrderitemStatus($orderitemStatus)
+    protected static function isShippableOrderitem(array $orderitemData)
     {
-        $isShippableOrderitemStatus = ($orderitemStatus == self::MMS_STATUS_PAID);
+        $isShippableOrderitemStatus = ($orderitemData['status'] == self::MMS_STATUS_PAID
+            && (!isset($orderitemData['local_order_item_financials']['refunded_amount'])
+                || $orderitemData['local_order_item_financials']['refunded_amount'] == 0)
+        );
+
         return $isShippableOrderitemStatus;
     }
 
@@ -203,7 +207,7 @@ class OrderGateway extends AbstractGateway
         $isShippable = self::isShippableOrderStatus($orderStatus);
 
         foreach ($this->getOrderitemsData($orderData) as $orderitemData) {
-            $isShippable &= self::isShippableOrderStatus($orderitemData['status']);
+            $isShippable &= self::isShippableOrderitem($orderitemData);
         }
 
         return (bool) $isShippable;
