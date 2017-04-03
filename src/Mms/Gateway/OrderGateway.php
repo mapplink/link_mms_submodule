@@ -181,9 +181,13 @@ class OrderGateway extends AbstractGateway
      */
     protected static function isShippableOrderitem(array $orderitemData)
     {
+        $financials = array('price'=>0, 'refunded_amount'=>0);
+        if (isset($orderitemData['local_order_item_financials'])) {
+            $financials = array_replace($financials, $orderitemData['local_order_item_financials']);
+        }
+
         $isShippableOrderitemStatus = ($orderitemData['status'] == self::MMS_STATUS_PAID
-            && (!isset($orderitemData['local_order_item_financials']['refunded_amount'])
-                || $orderitemData['local_order_item_financials']['refunded_amount'] == 0)
+            && ($financials['refunded_amount'] == 0 || $financials['price'] != $financials['refunded_amount'])
         );
 
         return $isShippableOrderitemStatus;
