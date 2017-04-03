@@ -166,13 +166,23 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * @param $orderStatus
-     * @return bool
+     * @param string $orderStatus
+     * @return bool $isShippable
      */
     public static function isShippableOrderStatus($orderStatus)
     {
         $isShippableOrderStatus = in_array($orderStatus, self::$mmsShippableStatusses);
         return $isShippableOrderStatus;
+    }
+
+    /**
+     * @param string $orderitemStatus
+     * @return bool $isShippable
+     */
+    protected static function isShippableOrderitemStatus($orderitemStatus)
+    {
+        $isShippableOrderitemStatus = ($orderitemStatus == self::MMS_STATUS_PAID);
+        return $isShippableOrderitemStatus;
     }
 
     /**
@@ -190,7 +200,13 @@ class OrderGateway extends AbstractGateway
                 ->updateEntity($this->_node->getNodeId(), $order, array('status'=>$orderStatus));
         }
 
-        return self::isShippableOrderStatus($orderStatus);
+        $isShippable = self::isShippableOrderStatus($orderStatus);
+
+        foreach ($this->getOrderitemsData($orderData) as $orderitemData) {
+            $isShippable &= self::isShippableOrderStatus($orderitemData['status']);
+        }
+
+        return (bool) $isShippable;
     }
 
     /**
@@ -434,6 +450,21 @@ class OrderGateway extends AbstractGateway
 
     /**
      * @param array $orderData
+     * @return array $orderitemData
+     */
+    protected function getOrderitemsData(array $orderData)
+    {
+        if (isset($orderData['order_items'])) {
+            $orderitemData = $orderData['order_items'];
+        }else{
+            $orderitemData = array();
+        }
+
+        return $orderitemData;
+    }
+
+    /**
+     * @param array $orderData
      * @throws GatewayException
      */
     protected function storeOrderData(array $orderData)
@@ -463,40 +494,38 @@ class OrderGateway extends AbstractGateway
             $itemTotals[$code] = 0;
         }
 
-        if (isset($orderData['order_items'])) {
-            foreach ($orderData['order_items'] as $orderitem) {
-                if (isset($orderitem['quantity']) && isset($orderitem['local_order_item_financials'])) {
-                    $rowTotals = array();
+        foreach ($this->getOrderitemsData($orderData) as $orderitemData) {
+            if (isset($orderitemData['quantity']) && isset($orderitemData['local_order_item_financials'])) {
+                $rowTotals = array();
 
-                    foreach ($this->itemTotalCodes as $code=>$isPerItem) {
-                        if (isset($orderitem['local_order_item_financials'][$code])) {
-                            $fieldValue = $orderitem['local_order_item_financials'][$code];
+                foreach ($this->itemTotalCodes as $code=>$isPerItem) {
+                    if (isset($orderitemData['local_order_item_financials'][$code])) {
+                        $fieldValue = $orderitemData['local_order_item_financials'][$code];
 
-                            if ($isPerItem) {
-                                $rowTotals[$code] = $orderitem['quantity'] * $fieldValue;
-                            }else{
-                                $rowTotals[$code] = $fieldValue;
-                            }
-                            $itemTotals[$code] += $rowTotals[$code];
+                        if ($isPerItem) {
+                            $rowTotals[$code] = $orderitemData['quantity'] * $fieldValue;
+                        }else{
+                            $rowTotals[$code] = $fieldValue;
                         }
-                    }
-
-                    $itemBaseToCurrencyRate = (isset($orderData['marketplace_to_local_exchange_rate_applied'])
-                        ? $orderData['marketplace_to_local_exchange_rate_applied']
-                        : (isset($orderData['marketplace_to_local_exchange_rate_estimated'])
-                            ? $orderData['marketplace_to_local_exchange_rate_estimated']
-                            : 0
-                        ));
-
-                    if ($itemBaseToCurrencyRate > 0) {
-                        $baseToCurrencyRate += $itemBaseToCurrencyRate * $rowTotals['price'];
-                        $baseToCurrencyRateGrandTotal += $rowTotals['price'];
+                        $itemTotals[$code] += $rowTotals[$code];
                     }
                 }
 
-                if (!isset($data['shipping_method'])) {
-                    $data['shipping_method'] = $this->getShippingMethod($orderitem);
+                $itemBaseToCurrencyRate = (isset($orderData['marketplace_to_local_exchange_rate_applied'])
+                    ? $orderData['marketplace_to_local_exchange_rate_applied']
+                    : (isset($orderData['marketplace_to_local_exchange_rate_estimated'])
+                        ? $orderData['marketplace_to_local_exchange_rate_estimated']
+                        : 0
+                    ));
+
+                if ($itemBaseToCurrencyRate > 0) {
+                    $baseToCurrencyRate += $itemBaseToCurrencyRate * $rowTotals['price'];
+                    $baseToCurrencyRateGrandTotal += $rowTotals['price'];
                 }
+            }
+
+            if (!isset($data['shipping_method'])) {
+                $data['shipping_method'] = $this->getShippingMethod($orderitemData);
             }
         }
 
