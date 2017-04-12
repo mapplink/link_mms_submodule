@@ -1321,7 +1321,7 @@ class OrderGateway extends AbstractGateway
                 break;
             default:
                 // store as a sync issue
-                throw new GatewayException('Unsupported action type '.$action->getType().' for Magento Orders.');
+                throw new GatewayException('Unsupported action type '.$action->getType().' for Mms Orders.');
                 $success = FALSE;
         }
 
@@ -1329,7 +1329,7 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * Preprocesses order items array (key=orderitem entity id, value=quantity) into an array suitable for Magento
+     * Preprocesses order items array (key=orderitem entity id, value=quantity) into an array
      * (local item ID=>quantity), while also auto-populating if not specified.
      * @param Order $order
      * @param array|NULL $rawItems
@@ -1383,7 +1383,7 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * Handles refunding an order in Magento
+     * Handles refunding an order
      * @param Order $order
      * @param string $comment Optional comment to append to order
      * @param string $notify String boolean, whether to notify customer
@@ -1422,14 +1422,8 @@ class OrderGateway extends AbstractGateway
 
         $originalOrder = $order->getOriginalOrder();
         try {
-            $soapResult = $this->_soap->call('salesOrderCreditmemoCreate', array(
-                $originalOrder->getUniqueId(),
-                $creditmemoData,
-                $comment,
-                $notify,
-                $sendComment,
-                $creditRefund
-            ));
+            $soapResult = NULL;
+            throw new GatewayException('Mms creditmemo create not implemented yet.');
         }catch (\Exception $exception) {
             // store as sync issue
             throw new GatewayException($exception->getMessage(), $exception->getCode(), $exception);
@@ -1447,12 +1441,12 @@ class OrderGateway extends AbstractGateway
 
         if (!$soapResult) {
             // store as a sync issue
-            throw new GatewayException('Failed to get creditmemo ID from Magento for order '.$order->getUniqueId());
+            throw new GatewayException('Failed to get creditmemo ID from Mms for order '.$order->getUniqueId());
         }
 
         try {
-            $this->_soap->call('salesOrderCreditmemoAddComment',
-                array($soapResult, 'FOR ORDER: '.$order->getUniqueId(), FALSE, FALSE));
+            $comment =  'FOR ORDER: '.$order->getUniqueId();
+            // Is there a comment update functionality?
         }catch (\Exception $exception) {
             // store as a sync issue
             throw new GatewayException($exception->getMessage(), $exception->getCode(), $exception);
@@ -1460,7 +1454,7 @@ class OrderGateway extends AbstractGateway
     }
 
     /**
-     * Handles shipping an order in Magento
+     * Handles shipping an order
      * @param Order $order
      * @param string $comment Optional comment to append to order
      * @param string $notify String boolean, whether to notify customer
@@ -1471,72 +1465,8 @@ class OrderGateway extends AbstractGateway
     protected function actionShip(Order $order, $comment = '', $notify = 'false', $sendComment = 'false',
         $itemsShipped = NULL, $trackingCode = NULL)
     {
-        $items = array();
-        foreach ($this->preprocessRequestItems($order, $itemsShipped) as $local=>$qty) {
-            $items[] = array('order_item_id'=>$local, 'qty'=>$qty);
-        }
-        if (count($items) == 0) {
-            $items = NULL;
-        }
-
-        $orderId = ($order->getData('original_order') != NULL ?
-            $order->resolve('original_order', 'order')->getUniqueId() : $order->getUniqueId());
-        $this->getServiceLocator()->get('logService')
-            ->log(LogService::LEVEL_DEBUGEXTRA,
-                'mms_o_act_ship',
-                'Sending shipment for '.$orderId,
-                array(
-                    'ord'=>$order->getId(),
-                    'items'=>$items,
-                    'comment'=>$comment,
-                    'notify'=>$notify,
-                    'sendComment'=>$sendComment
-                ),
-                array('node'=>$this->_node, 'entity'=>$order)
-            );
-
-        try {
-            $soapResult = $this->_soap->call('salesOrderShipmentCreate', array(
-                'orderIncrementId'=>$orderId,
-                'itemsQty'=>$items,
-                'comment'=>$comment,
-                'email'=>$notify,
-                'includeComment'=>$sendComment
-            ));
-        }catch (\Exception $exception) {
-            // store as sync issue
-            throw new GatewayException($exception->getMessage(), $exception->getCode(), $exception);
-        }
-
-        if (is_object($soapResult)) {
-            $soapResult = $soapResult->shipmentIncrementId;
-        }elseif (is_array($soapResult)) {
-            if (isset($soapResult['shipmentIncrementId'])) {
-                $soapResult = $soapResult['shipmentIncrementId'];
-            }else{
-                $soapResult = array_shift($soapResult);
-            }
-        }
-
-        if (!$soapResult) {
-            // store as sync issue
-            throw new GatewayException('Failed to get shipment ID from Magento for order '.$order->getUniqueId());
-        }
-
-        if ($trackingCode != NULL) {
-            try {
-                $this->_soap->call('salesOrderShipmentAddTrack',
-                    array(
-                        'shipmentIncrementId'=>$soapResult,
-                        'carrier'=>'custom',
-                        'title'=>$order->getData('shipping_method', 'Shipping'),
-                        'trackNumber'=>$trackingCode)
-                );
-            }catch (\Exception $exception) {
-                // store as sync issue
-                throw new GatewayException($exception->getMessage(), $exception->getCode(), $exception);
-            }
-        }
+        // Fulfilment is done on the fly during dispatch
+        return NULL;
     }
 
 }
