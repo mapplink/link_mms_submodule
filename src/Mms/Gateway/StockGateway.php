@@ -66,7 +66,7 @@ class StockGateway extends AbstractGateway
         $mmsQuantities = ProductGateway::getTmallQuantities($product);
 
         $logCodePrefix = 'mms_si';
-        $logMessagePrefix = 'Stock update for '.$uniqueId.' ';
+        $logMessagePrefix = 'Stock update for '.$uniqueId;
         $logMessage = '';
         $logData = array('node'=>$nodeId, 'id'=>$stockitem->getEntityId(), 'unique'=>$uniqueId, 'local'=>$localId);
 
@@ -74,18 +74,20 @@ class StockGateway extends AbstractGateway
             $success = NULL;
             $logLevel = LogService::LEVEL_WARN;
             $logCode = $logCodePrefix.'_nmms';
-            $logMessage = $logMessagePrefix.'was skipped. This item is not defined as a MMS product.';
+            $logMessage = $logMessagePrefix.' was skipped. This item is not defined as a MMS product.';
         }elseif (!in_array('available', $attributes)) {
             $success = NULL;
             $logLevel = LogService::LEVEL_WARN;
             $logCode = $logCodePrefix.'_skip';
-            $logMessage .= $logMessagePrefix.'was skipped. Availabilty is not set.';
+            $logMessage .= $logMessagePrefix.' was skipped. Availabilty is not set.';
             $logData['attribute'] = implode(', ', $attributes);
         }else{
             $localId = $this->_entityService->getLocalId($nodeId, $stockitem);
             if ($this->rest) {
+                $logLevel = '';
                 $remainingQuantities = count($mmsQuantities);
                 foreach ($mmsQuantities as $multiplier) {
+                    $prefix = ' ('.$multiplier.'x) '.$logMessagePrefix;
                     try{
                         $available = $logData['available'] = $stockitem->getData('available', 0);
                         if ($multiplier == 1) {
@@ -101,13 +103,13 @@ class StockGateway extends AbstractGateway
                             }catch(\Exception $exception) {}
 
                             if (!isset($newStock) || ($newStock != $available)) {
-                                $message = $logMessagePrefix.' via local id failed due to a API problem.';
+                                $message = $prefix.' via local id failed due to a API problem.';
                                 unset($newStock);
                             }
                         }elseif (!$localId) {
-                            $message = $logMessagePrefix.'could not be executed due to a missing local id.';
+                            $message = $prefix.' could not be executed due to a missing local id.';
                         }else{
-                            $logMessage .= '(call by sku only) ';
+                            $message = $prefix.' (call by sku only).';
                         }
 
                         if (!isset($newStock)) {
@@ -120,45 +122,49 @@ class StockGateway extends AbstractGateway
 
                         $success = ($newStock == $available);
                         if ($success) {
-                            $logLevel = LogService::LEVEL_INFO;
-                            $logCode = $logCodePrefix.'_suc';
-                            $logMessage = $logMessagePrefix.'was successful.';
+                            if ($logLevel != LogService::LEVEL_ERROR && $logLevel != LogService::LEVEL_WARN) {
+                                $logLevel = LogService::LEVEL_INFO;
+                                $logCode = $logCodePrefix.'_suc';
+                            }
+                            $logMessage .= $prefix.' was successful.';
                         }elseif ($localId) {
                             $logLevel = LogService::LEVEL_ERROR;
                             $logCode = $logCodePrefix.'_fail';
-                            $logMessage = $logMessagePrefix.'failed due to a API problem.';
+                            $logMessage .= $prefix.' failed due to a API problem.';
                         }else{
-                            $logLevel = LogService::LEVEL_WARN;
-                            $logCode = $logCodePrefix.'_ignore';
-                            $logMessage .= 'failed due to a API problem and was therefore ignored (no local id).';
+                            if ($logLevel != LogService::LEVEL_ERROR) {
+                                $logLevel = LogService::LEVEL_WARN;
+                                $logCode = $logCodePrefix.'_ignore';
+                            }
+                            $logMessage .= $prefix.' failed due to a API problem and was therefore ignored (no local id).';
                         }
                         unset($message, $newStock);
                     }catch(\Exception $exception) {
                         $success = FALSE;
                         $logLevel = LogService::LEVEL_ERROR;
-                        $logCode = $logMessagePrefix.'_ex';
-                        $logMessage .= 'failed with an exception: '.$exception->getMessage();
+                        $logCode = $logCodePrefix.'_ex';
+                        $logMessage .= $prefix.' failed with an exception: '.$exception->getMessage().'.';
                     }
 
                     if (--$remainingQuantities > 0) {
                         $this->getServiceLocator()->get('logService')->log($logLevel, $logCode, $logMessage, $logData);
                     }
-                }
+                } // end foreach ($mmsQuantities as $multiplier)
             }elseif (isset($localId)) {
                 $success = FALSE;
                 $logLevel = LogService::LEVEL_ERROR;
-                $logCode = $logMessagePrefix.'_norest';
-                $logMessage .= 'could not be executed due to a problem with the REST initialisation.';
+                $logCode = $logCodePrefix.'_norest';
+                $logMessage = $logMessagePrefix.' could not be executed due to a problem with the REST initialisation.';
             }else{
                 $success = FALSE;
                 $logLevel = LogService::LEVEL_ERROR;
-                $logCode = $logMessagePrefix.'_none';
-                $logMessage .= 'could not be processed. Neither local id nor REST was available.';
+                $logCode = $logCodePrefix.'_none';
+                $logMessage = $logMessagePrefix.' could not be processed. Neither local id nor REST was available.';
             }
         }
 
         $this->getServiceLocator()->get('logService')
-            ->log($logLevel, $logCode, $logMessage, $logData);
+            ->log($logLevel, $logCode, trim($logMessage), $logData);
 
         return $success;
     }
