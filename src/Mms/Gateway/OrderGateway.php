@@ -906,7 +906,7 @@ class OrderGateway extends AbstractGateway
                                 $linkLogData = array_replace($logData, array('sku'=>$stockUnique));
                                 $this->getServiceLocator()->get('logService')->log(LogService::LEVEL_ERROR,
                                     'mms_o_re_oi_nlsi', 'Unable to link stock item.', $linkLogData);
-                            }elseif (!is_null($localStockitemId) && $storedId != $localStockitemId) {
+                            }elseif (!is_null($localStockitemId) && $storedId != $localStockitemId && !$isBundledProduct) {
                                 $this->_entityService->linkEntity($nodeId, $stockitem, $localStockitemId);
                             }
                             break;
